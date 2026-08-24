@@ -33,6 +33,18 @@
         "reveal": "always"
       },
       "problemMatcher": []
+    },
+    {
+      "label": "free dev ports (3000, 6710)",
+      "type": "shell",
+      "command": "powershell",
+      "args": [
+        "-NoProfile",
+        "-Command",
+        "Get-NetTCPConnection -LocalPort 3000,6710 -State Listen -ErrorAction SilentlyContinue | Select-Object -ExpandProperty OwningProcess -Unique | ForEach-Object { Stop-Process -Id $_ -Force }; Write-Output 'ports free'"
+      ],
+      "presentation": { "panel": "shared", "reveal": "always" },
+      "problemMatcher": []
     }
   ]
 }
