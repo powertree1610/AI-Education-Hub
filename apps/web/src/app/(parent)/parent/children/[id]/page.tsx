@@ -240,7 +240,7 @@ export default async function ParentChildPage({
           />
           <button
             type="submit"
-            className="rounded-md bg-blue-600 px-3 py-2 text-sm font-medium text-white hover:bg-blue-700"
+            className="rounded-md bg-teal-700 px-3 py-2 text-sm font-medium text-white hover:bg-teal-800"
           >
             Propose
           </button>
@@ -262,7 +262,7 @@ export default async function ParentChildPage({
                     </span>
                   </span>
                   {key ? (
-                    <Link href={`/api/files/${key}`} target="_blank" className="text-blue-600 hover:underline">
+                    <Link href={`/api/files/${key}`} target="_blank" className="text-teal-700 hover:underline">
                       view
                     </Link>
                   ) : null}
@@ -305,7 +305,7 @@ export default async function ParentChildPage({
             <div className="col-span-2">
               <button
                 type="submit"
-                className="rounded-md bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700"
+                className="rounded-md bg-teal-700 px-4 py-2 text-sm font-medium text-white hover:bg-teal-800"
               >
                 Upload
               </button>

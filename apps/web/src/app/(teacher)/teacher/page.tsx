@@ -103,7 +103,7 @@ export default async function TeacherHome() {
                 <span className="font-medium">{st.fullName}</span>{" "}
                 <span className="text-slate-500">· {st.studentCode}</span>
               </span>
-              <Link href={`/teacher/students/${st.id}`} className="text-blue-600 hover:underline">
+              <Link href={`/teacher/students/${st.id}`} className="text-teal-700 hover:underline">
                 view
               </Link>
             </li>

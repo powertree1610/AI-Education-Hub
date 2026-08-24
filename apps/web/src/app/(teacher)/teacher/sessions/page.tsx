@@ -67,7 +67,7 @@ export default async function SessionsPage() {
                   </span>
                 </span>
                 <span className="flex gap-3">
-                  <Link href={`/kiosk/${session.id}`} className="text-blue-600 hover:underline">
+                  <Link href={`/kiosk/${session.id}`} className="text-teal-700 hover:underline">
                     open kiosk
                   </Link>
                   <form action={endSessionAction}>
@@ -102,7 +102,7 @@ export default async function SessionsPage() {
                       <input type="hidden" name="studentId" value={st.id} />
                       <button
                         type="submit"
-                        className="rounded-md bg-blue-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-blue-700"
+                        className="rounded-md bg-teal-700 px-3 py-1.5 text-xs font-medium text-white hover:bg-teal-800"
                       >
                         Start session
                       </button>

@@ -41,25 +41,33 @@ export default async function KioskPage({
   const name = student.preferredName ?? student.fullName;
 
   return (
-    <div className="mx-auto flex min-h-screen max-w-3xl flex-col px-4 py-4">
-      <header className="mb-3 flex items-center justify-between">
-        <h1 className="text-2xl font-bold text-indigo-700">Hi {name}! 👋</h1>
-        <form action={endSessionAction}>
-          <input type="hidden" name="sessionId" value={sessionId} />
-          <button
-            type="submit"
-            className="rounded-md border border-slate-300 px-3 py-1.5 text-xs text-slate-500 hover:bg-slate-100"
+    <div className="min-h-screen bg-linear-to-b from-amber-50 via-orange-50 to-teal-50">
+      <div className="mx-auto flex min-h-screen max-w-3xl flex-col px-4 py-4">
+        <header className="mb-3 flex items-center justify-between">
+          <h1
+            className="text-3xl font-bold text-teal-800"
+            style={{ fontFamily: "var(--font-display)" }}
           >
-            End session (teacher)
-          </button>
-        </form>
-      </header>
-      <ChatWindow
-        chatId={sessionId}
-        endpoint="/api/kiosk/chat"
-        payloadKey="sessionId"
-        initialMessages={[]}
-      />
+            Hi {name}! 👋
+          </h1>
+          <form action={endSessionAction}>
+            <input type="hidden" name="sessionId" value={sessionId} />
+            <button
+              type="submit"
+              className="rounded-full border border-slate-300 bg-white/70 px-3 py-1.5 text-xs text-slate-500 hover:bg-white"
+            >
+              End session (teacher)
+            </button>
+          </form>
+        </header>
+        <ChatWindow
+          chatId={sessionId}
+          endpoint="/api/kiosk/chat"
+          payloadKey="sessionId"
+          variant="kid"
+          initialMessages={[]}
+        />
+      </div>
     </div>
   );
 }

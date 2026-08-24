@@ -22,7 +22,7 @@ export default async function ParentHome() {
             <li key={child.id}>
               <Link
                 href={`/parent/children/${child.id}`}
-                className="block rounded-lg border border-slate-200 bg-white p-4 hover:border-blue-400"
+                className="block rounded-lg border border-slate-200 bg-white p-4 hover:border-teal-500"
               >
                 <div className="font-medium">{child.fullName}</div>
                 <div className="mt-1 text-sm text-slate-500">

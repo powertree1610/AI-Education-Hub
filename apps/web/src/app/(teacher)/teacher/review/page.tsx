@@ -162,7 +162,7 @@ export default async function ReviewQueuePage() {
                   </div>
                   <p className="mt-1">{o.statement}</p>
                   {change ? (
-                    <p className="mt-2 rounded bg-indigo-50 px-2 py-1 text-xs text-indigo-800">
+                    <p className="mt-2 rounded bg-teal-50 px-2 py-1 text-xs text-teal-900">
                       Proposed change: {change.target} · {change.key} : {String(change.from ?? "?")} →{" "}
                       {String(change.to ?? "?")}
                       {change.target !== "student_levels"
