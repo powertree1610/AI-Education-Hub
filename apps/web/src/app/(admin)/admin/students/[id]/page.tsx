@@ -1,10 +1,12 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { desc, eq } from "drizzle-orm";
+import { and, desc, eq, isNull } from "drizzle-orm";
 import { schema as s } from "@platform/db";
 import { CONSENT_TYPES, getCurrentConsents, parseLocalUrl } from "@platform/shared";
+import { endStudentTeacherAction, linkStudentTeacherAction } from "@/actions/classes";
 import { setConsentAction } from "@/actions/students";
 import { uploadWorkSampleAction } from "@/actions/uploads";
+import { ResultsSection } from "@/components/results-section";
 import { CONSENT_LABELS } from "@/lib/consent-labels";
 import { getDb } from "@/lib/db";
 
@@ -56,13 +58,48 @@ export default async function StudentDetailPage({
 
   const subjects = await db.select().from(s.subjects).orderBy(s.subjects.name);
 
+  const directTeachers = await db
+    .select({
+      id: s.studentTeachers.id,
+      role: s.studentTeachers.role,
+      startDate: s.studentTeachers.startDate,
+      teacherName: s.users.name,
+      subjectName: s.subjects.name,
+    })
+    .from(s.studentTeachers)
+    .innerJoin(s.users, eq(s.users.id, s.studentTeachers.userId))
+    .leftJoin(s.subjects, eq(s.subjects.id, s.studentTeachers.subjectId))
+    .where(and(eq(s.studentTeachers.studentId, id), isNull(s.studentTeachers.endDate)));
+
+  const currentClasses = await db
+    .select({
+      className: s.vStudentCurrentClasses.className,
+      startDate: s.vStudentCurrentClasses.startDate,
+    })
+    .from(s.vStudentCurrentClasses)
+    .where(eq(s.vStudentCurrentClasses.studentId, id));
+
+  const teacherUsers = await db
+    .select({ id: s.users.id, name: s.users.name })
+    .from(s.users)
+    .where(and(eq(s.users.role, "teacher"), eq(s.users.isActive, true)))
+    .orderBy(s.users.name);
+
   return (
     <div className="space-y-8">
       <div>
-        <h1 className="text-xl font-semibold">
-          {student.fullName}{" "}
-          <span className="text-base font-normal text-slate-500">· {student.studentCode}</span>
-        </h1>
+        <div className="flex items-start justify-between">
+          <h1 className="text-xl font-semibold">
+            {student.fullName}{" "}
+            <span className="text-base font-normal text-slate-500">· {student.studentCode}</span>
+          </h1>
+          <Link
+            href={`/admin/students/${id}/questionnaire`}
+            className="rounded-md border border-slate-300 px-3 py-1.5 text-sm hover:bg-slate-50"
+          >
+            Enter parent questionnaire
+          </Link>
+        </div>
         <dl className="mt-4 grid grid-cols-2 gap-x-8 gap-y-2 rounded-lg border border-slate-200 bg-white p-4 text-sm md:grid-cols-4">
           <div>
             <dt className="text-slate-500">Date of birth</dt>
@@ -113,6 +150,75 @@ export default async function StudentDetailPage({
           </ul>
         )}
       </section>
+
+      <section>
+        <h2 className="font-medium">Teachers & classes</h2>
+        <div className="mt-2 rounded-lg border border-slate-200 bg-white text-sm">
+          {currentClasses.map((c, i) => (
+            <div key={`c${i}`} className="border-b border-slate-100 px-4 py-2">
+              <span className="font-medium">{c.className}</span>{" "}
+              <span className="text-slate-500">· class · since {c.startDate}</span>
+            </div>
+          ))}
+          {directTeachers.map((t) => (
+            <div key={t.id} className="flex items-center justify-between border-b border-slate-100 px-4 py-2 last:border-0">
+              <span>
+                <span className="font-medium">{t.teacherName}</span>{" "}
+                <span className="text-slate-500">
+                  · {t.role}
+                  {t.subjectName ? ` · ${t.subjectName}` : ""} · since {t.startDate}
+                </span>
+              </span>
+              <form action={endStudentTeacherAction}>
+                <input type="hidden" name="studentTeacherId" value={t.id} />
+                <button type="submit" className="text-xs text-red-600 hover:underline">
+                  end link
+                </button>
+              </form>
+            </div>
+          ))}
+          {currentClasses.length === 0 && directTeachers.length === 0 ? (
+            <div className="px-4 py-2 text-slate-500">
+              No class enrollment or direct teacher — teachers cannot see this student yet.
+            </div>
+          ) : null}
+        </div>
+        {teacherUsers.length > 0 ? (
+          <form action={linkStudentTeacherAction} className="mt-2 flex items-center gap-2">
+            <input type="hidden" name="studentId" value={id} />
+            <select name="userId" required className="rounded-md border border-slate-300 px-3 py-2 text-sm">
+              {teacherUsers.map((t) => (
+                <option key={t.id} value={t.id}>
+                  {t.name}
+                </option>
+              ))}
+            </select>
+            <select name="role" className="rounded-md border border-slate-300 px-3 py-2 text-sm">
+              {s.studentTeacherRoleInCore.enumValues.map((r) => (
+                <option key={r} value={r}>
+                  {r}
+                </option>
+              ))}
+            </select>
+            <select name="subjectId" className="rounded-md border border-slate-300 px-3 py-2 text-sm">
+              <option value="">any subject</option>
+              {subjects.map((subject) => (
+                <option key={subject.id} value={subject.id}>
+                  {subject.name}
+                </option>
+              ))}
+            </select>
+            <button
+              type="submit"
+              className="rounded-md bg-blue-600 px-3 py-2 text-sm font-medium text-white hover:bg-blue-700"
+            >
+              Link teacher
+            </button>
+          </form>
+        ) : null}
+      </section>
+
+      <ResultsSection studentId={id} />
 
       <section>
         <h2 className="font-medium">Consents</h2>

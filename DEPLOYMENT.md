@@ -38,6 +38,7 @@ Production env vars come from the **service configuration** (WinSW/NSSM), NOT `.
 - `MCP_URL=http://localhost:6710/mcp`, `MCP_SHARED_SECRET` (long random string, same on both services)
 - `UPLOAD_DIR` — **absolute path** on a backed-up data volume
 - `TRANSCRIPT_RETENTION_DAYS`
+- `JOB_SECRET` — long random string for the `/api/jobs/*` routes (Task Scheduler)
 - `PORT=3000` (Next standalone reads PORT), `MCP_PORT=6710`
 
 ## 3. Windows services (WinSW example)
@@ -94,7 +95,33 @@ survive a reboot (services default to Automatic start).
    by the web process.
 5. HTTPS binding with your certificate; HTTP → HTTPS redirect.
 
-## 5. Post-deploy checklist
+## 5. Scheduled jobs (Windows Task Scheduler)
+
+Two tasks:
+
+1. **Weekly synthesis** — Sundays 02:00, action `Program: curl.exe`, arguments:
+
+   ```
+   -s -X POST -H "x-job-secret: <JOB_SECRET>" http://localhost:3000/api/jobs/weekly-synthesis
+   ```
+
+   Runs one consolidated AI pass per student active that week; proposals land in
+   the teacher review queue tagged with a `synthesis_batch_id`. Allow up to 10
+   minutes (`maxDuration=600` on the route).
+
+2. **Transcript purge** — daily 03:00, working directory = the repo checkout
+   (needs `DATABASE_URL` in env or the repo `.env`):
+
+   ```
+   pnpm --filter @platform/db purge-transcripts
+   ```
+
+   Deletes `session_transcripts` rows past `expires_at` and writes an audit row.
+
+(The per-session observation pass needs no scheduling — it runs automatically
+when a teacher ends a kiosk session.)
+
+## 6. Post-deploy checklist
 
 - `pnpm check:db` against production (from a workstation) — grants still hold.
 - Staff chat streams through IIS; kiosk reachable from a LAN device.
@@ -102,11 +129,12 @@ survive a reboot (services default to Automatic start).
 - `UPLOAD_DIR` included in backups; Neon PITR enabled.
 - Clerk: production instance keys; pre-provision staff `core.users` rows before first sign-in.
 
-## Known gaps (v1)
+## Known gaps (as of v2)
 
-- No transcript purge job (`expires_at` is set but rows persist) — add a Task
-  Scheduler job later.
 - Upload malware/NSFW scanning stubbed (`upload_scans` records what was checked).
 - Clerk deactivation does not auto-sync without a public webhook URL — deactivate in
   `core.users` manually as well.
 - Kiosk lock-down is soft (route chrome only); PIN-to-exit is a fast follow.
+- Parent portal, safeguarding UI, safety-event classifiers: later versions.
+- Kiosk running context is in-memory — a web-service restart mid-session loses the
+  unfinished conversation (the session row and activities survive).

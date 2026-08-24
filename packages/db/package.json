@@ -12,6 +12,7 @@
     "pull": "drizzle-kit pull",
     "seed": "tsx scripts/seed.ts",
     "check": "tsx scripts/check.ts",
+    "purge-transcripts": "tsx scripts/purge-transcripts.ts",
     "test": "tsx --test \"src/**/*.test.ts\""
   },
   "dependencies": {
