@@ -1,0 +1,18 @@
+import { PortalShell } from "@/components/portal-shell";
+import { requireRoleOrRedirect } from "@/lib/guard";
+
+export default async function AdminLayout({ children }: { children: React.ReactNode }) {
+  const user = await requireRoleOrRedirect("admin");
+  return (
+    <PortalShell
+      title="Admin"
+      user={user}
+      nav={[
+        { href: "/admin/students", label: "Students" },
+        { href: "/teacher/chat", label: "AI Chat" },
+      ]}
+    >
+      {children}
+    </PortalShell>
+  );
+}
