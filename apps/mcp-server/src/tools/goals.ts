@@ -2,7 +2,7 @@ import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { and, desc, eq, type SQL } from "drizzle-orm";
 import { z } from "zod";
 import { schema as s } from "@platform/db";
-import { defineTool } from "../define-tool.js";
+import { STUDENT_REF, defineTool } from "../define-tool.js";
 import { subjectIdByCode } from "./util.js";
 
 export function registerGoalTools(server: McpServer): void {
@@ -10,12 +10,12 @@ export function registerGoalTools(server: McpServer): void {
     name: "get_goals",
     description: "A student's goals (academic and personal) with status and dates.",
     inputSchema: {
-      student_id: z.string().uuid(),
+      student_id: STUDENT_REF,
       status: z.enum(s.goalStatusInCore.enumValues).optional(),
     },
     consent: ["development_tracking"],
-    handler: async (input, { db }) => {
-      const filters: SQL[] = [eq(s.goals.studentId, input.student_id)];
+    handler: async (input, { db, studentId }) => {
+      const filters: SQL[] = [eq(s.goals.studentId, studentId)];
       if (input.status) filters.push(eq(s.goals.status, input.status));
 
       const rows = await db
@@ -44,19 +44,19 @@ export function registerGoalTools(server: McpServer): void {
       "Suggest a new goal for a student. It is stored as 'proposed' — a teacher must activate it before " +
       "it becomes part of the student's active goals.",
     inputSchema: {
-      student_id: z.string().uuid(),
+      student_id: STUDENT_REF,
       goal_type: z.enum(s.goalTypeInCore.enumValues),
       title: z.string().min(3).max(200),
       description: z.string().optional(),
       subject_code: z.string().optional(),
     },
     consent: ["development_tracking"],
-    handler: async (input, { db }) => {
+    handler: async (input, { db, studentId }) => {
       const subjectId = input.subject_code ? await subjectIdByCode(db, input.subject_code) : null;
       const [row] = await db
         .insert(s.goals)
         .values({
-          studentId: input.student_id,
+          studentId,
           goalType: input.goal_type,
           subjectId,
           title: input.title,

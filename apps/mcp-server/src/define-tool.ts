@@ -1,6 +1,7 @@
 import type { McpServer, ToolCallback } from "@modelcontextprotocol/sdk/server/mcp.js";
+import { eq } from "drizzle-orm";
 import { z } from "zod";
-import type { Db } from "@platform/db";
+import { schema as s, type Db } from "@platform/db";
 import {
   checkConsent,
   getCurrentConsents,
@@ -9,6 +10,26 @@ import {
   type ConsentType,
 } from "@platform/shared";
 import { getDb } from "./lib/db.js";
+
+/** Accepted anywhere a tool takes a student: the DB UUID or the student code. */
+export const STUDENT_REF = z
+  .string()
+  .min(3)
+  .describe("Student UUID or student code (e.g. ST-0002) — either works");
+
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+/** Teachers know codes, not UUIDs — translate either form to the UUID. */
+export async function toStudentUuid(db: Db, ref: string): Promise<string | null> {
+  const value = ref.trim();
+  if (UUID_RE.test(value)) return value;
+  const rows = await db
+    .select({ id: s.students.id })
+    .from(s.students)
+    .where(eq(s.students.studentCode, value.toUpperCase()))
+    .limit(1);
+  return rows[0]?.id ?? null;
+}
 
 export interface ToolContext {
   db: Db;
@@ -52,12 +73,19 @@ export function defineTool<S extends z.ZodRawShape>(server: McpServer, def: Tool
       const db = getDb();
       const input = z.object(def.inputSchema).parse(parsedInput) as z.infer<z.ZodObject<S>>;
 
-      const studentId = def.resolveStudentId
+      const rawRef = def.resolveStudentId
         ? await def.resolveStudentId(input, db)
         : ((input as Record<string, unknown>)["student_id"] as string | undefined) ?? null;
+      const studentId = rawRef ? await toStudentUuid(db, rawRef) : null;
 
       if (!studentId) {
-        return textResult({ code: "NOT_FOUND", message: "Student not found for this input" }, true);
+        return textResult(
+          {
+            code: "NOT_FOUND",
+            message: "Student not found for this input (pass the student UUID or a valid student code like ST-0002)",
+          },
+          true,
+        );
       }
 
       const { granted, missing } = await checkConsent(db, studentId, def.consent);

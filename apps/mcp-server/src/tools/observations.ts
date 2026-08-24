@@ -2,7 +2,7 @@ import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { and, desc, eq, gte, inArray, or, type SQL } from "drizzle-orm";
 import { z } from "zod";
 import { schema as s } from "@platform/db";
-import { defineTool } from "../define-tool.js";
+import { STUDENT_REF, defineTool } from "../define-tool.js";
 
 const PROPOSED_CHANGE_SCHEMA = z.object({
   target: z.enum(["student_levels", "student_interests", "goals"]),
@@ -18,14 +18,14 @@ export function registerObservationTools(server: McpServer): void {
       "Observations about one student: teacher-approved ones, plus the AI's own still-pending ones " +
       "(so you can avoid filing duplicates). Rejected observations are excluded.",
     inputSchema: {
-      student_id: z.string().uuid(),
+      student_id: STUDENT_REF,
       since: z.string().date().optional(),
       limit: z.number().int().min(1).max(100).default(30),
     },
     consent: ["development_tracking"],
-    handler: async (input, { db }) => {
+    handler: async (input, { db, studentId }) => {
       const filters: SQL[] = [
-        eq(s.observations.studentId, input.student_id),
+        eq(s.observations.studentId, studentId),
         or(
           inArray(s.observations.status, ["approved", "partially_approved", "monitoring"]),
           and(eq(s.observations.status, "unverified"), eq(s.observations.sourceRole, "ai")),
@@ -61,7 +61,7 @@ export function registerObservationTools(server: McpServer): void {
       "It is stored as unverified and goes to the teacher review queue — the proposed change is stored, NOT applied. " +
       "Record observable behaviour and academic evidence only; never psychological, medical or trauma inference.",
     inputSchema: {
-      student_id: z.string().uuid(),
+      student_id: STUDENT_REF,
       category: z.string().min(2).max(80),
       statement: z.string().min(5),
       evidence_source: z.enum(s.evidenceSourceInCore.enumValues),
@@ -73,11 +73,11 @@ export function registerObservationTools(server: McpServer): void {
       synthesis_batch_id: z.string().uuid().optional(),
     },
     consent: ["development_tracking"],
-    handler: async (input, { db }) => {
+    handler: async (input, { db, studentId }) => {
       const [row] = await db
         .insert(s.observations)
         .values({
-          studentId: input.student_id,
+          studentId,
           category: input.category,
           statement: input.statement,
           evidenceSource: input.evidence_source,

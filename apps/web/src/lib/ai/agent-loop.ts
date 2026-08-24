@@ -45,9 +45,21 @@ function cleanDeepSeekMarkup(content: string): string {
     .trim();
 }
 
-/** Which student is this tool call about? (For the teacher access guard.) */
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+/** Which student is this tool call about? (For the teacher access guard.)
+ *  Tools accept a student code as well as a UUID — translate before checking. */
 async function resolveTargetStudent(args: Record<string, unknown>): Promise<string | null> {
-  if (typeof args.student_id === "string") return args.student_id;
+  if (typeof args.student_id === "string") {
+    const ref = args.student_id.trim();
+    if (UUID_RE.test(ref)) return ref;
+    const rows = await getDb()
+      .select({ id: s.students.id })
+      .from(s.students)
+      .where(eq(s.students.studentCode, ref.toUpperCase()))
+      .limit(1);
+    return rows[0]?.id ?? null;
+  }
   if (typeof args.work_sample_id === "string") {
     const rows = await getDb()
       .select({ studentId: s.workSamples.studentId })

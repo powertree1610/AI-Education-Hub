@@ -2,7 +2,7 @@ import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { and, asc, eq, gte, type SQL } from "drizzle-orm";
 import { z } from "zod";
 import { schema as s } from "@platform/db";
-import { defineTool } from "../define-tool.js";
+import { STUDENT_REF, defineTool } from "../define-tool.js";
 import { subjectIdByCode } from "./util.js";
 
 export function registerResultsTools(server: McpServer): void {
@@ -12,13 +12,13 @@ export function registerResultsTools(server: McpServer): void {
       "School and centre exam/test results for one student over time, with a computed per-subject trend. " +
       "Optionally filter by subject code (e.g. ENG, MATH) or a start date.",
     inputSchema: {
-      student_id: z.string().uuid(),
+      student_id: STUDENT_REF,
       subject_code: z.string().optional(),
       since: z.string().date().optional(),
     },
     consent: ["academic_data"],
-    handler: async (input, { db }) => {
-      const filters: SQL[] = [eq(s.academicResults.studentId, input.student_id)];
+    handler: async (input, { db, studentId }) => {
+      const filters: SQL[] = [eq(s.academicResults.studentId, studentId)];
       if (input.subject_code) {
         const subjectId = await subjectIdByCode(db, input.subject_code);
         if (!subjectId) throw new Error(`Unknown subject code: ${input.subject_code}`);

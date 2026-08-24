@@ -2,7 +2,7 @@ import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { and, eq, inArray } from "drizzle-orm";
 import { z } from "zod";
 import { schema as s } from "@platform/db";
-import { defineTool } from "../define-tool.js";
+import { STUDENT_REF, defineTool } from "../define-tool.js";
 
 export function registerProfileTools(server: McpServer): void {
   defineTool(server, {
@@ -12,12 +12,12 @@ export function registerProfileTools(server: McpServer): void {
       "current skill/development levels, interests with their source, and active goals. " +
       "Excludes health, safeguarding and unverified observations by construction.",
     inputSchema: {
-      student_id: z.string().uuid(),
+      student_id: STUDENT_REF,
     },
     consent: ["basic_profile"],
-    handler: async (input, { db, consents }) => {
+    handler: async (input, { db, consents, studentId }) => {
       const student = (
-        await db.select().from(s.students).where(eq(s.students.id, input.student_id)).limit(1)
+        await db.select().from(s.students).where(eq(s.students.id, studentId)).limit(1)
       )[0];
       if (!student) throw new Error("Student not found");
 
@@ -34,7 +34,7 @@ export function registerProfileTools(server: McpServer): void {
         })
         .from(s.studentInterests)
         .leftJoin(s.interests, eq(s.interests.id, s.studentInterests.interestId))
-        .where(eq(s.studentInterests.studentId, input.student_id));
+        .where(eq(s.studentInterests.studentId, studentId));
 
       // Levels and goals are development-tracking data — included only when
       // that consent is also granted.
@@ -49,7 +49,7 @@ export function registerProfileTools(server: McpServer): void {
               effectiveFrom: s.vCurrentLevels.effectiveFrom,
             })
             .from(s.vCurrentLevels)
-            .where(eq(s.vCurrentLevels.studentId, input.student_id))
+            .where(eq(s.vCurrentLevels.studentId, studentId))
         : [];
 
       const activeGoals = devTracking
@@ -65,7 +65,7 @@ export function registerProfileTools(server: McpServer): void {
             .from(s.goals)
             .where(
               and(
-                eq(s.goals.studentId, input.student_id),
+                eq(s.goals.studentId, studentId),
                 inArray(s.goals.status, ["active", "improving"]),
               ),
             )

@@ -17,7 +17,7 @@ Ground rules (non-negotiable, from the platform's design):
 6. Skill levels use a 1–5 scale. Trends are computed from history; never label a child permanently.
 7. Answer in the language the staff member writes in. Be concise and practical — teachers are busy.
 
-Student IDs are UUIDs from the platform UI. When the staff member names a student without an ID, ask them to open the chat from that student's page or provide the student code.`;
+Every tool's student_id accepts either the platform UUID or the student code (e.g. ST-0002) — staff normally know the code, so just use it directly. If they only give a name, ask for the student code (it is shown next to the student's name everywhere in the platform).`;
 }
 
 /** System prompt for the student kiosk chat (supervised, child-facing). */

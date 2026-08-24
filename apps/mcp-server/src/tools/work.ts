@@ -2,7 +2,7 @@ import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { and, desc, eq, type SQL } from "drizzle-orm";
 import { z } from "zod";
 import { schema as s } from "@platform/db";
-import { defineTool } from "../define-tool.js";
+import { STUDENT_REF, defineTool } from "../define-tool.js";
 import { studentIdOfWorkSample, subjectIdByCode } from "./util.js";
 
 const FINDINGS_SCHEMA = z.object({
@@ -19,15 +19,15 @@ export function registerWorkTools(server: McpServer): void {
       "Uploaded work samples (essays, worksheets, drawings…) for one student — metadata and file references. " +
       "Use read_work_sample_file (app-side) to read a file's content; originals are immutable.",
     inputSchema: {
-      student_id: z.string().uuid(),
+      student_id: STUDENT_REF,
       subject_code: z.string().optional(),
       work_type: z.enum(s.workTypeInCore.enumValues).optional(),
       limit: z.number().int().min(1).max(50).default(10),
     },
     consent: ["work_uploads"],
-    handler: async (input, { db }) => {
+    handler: async (input, { db, studentId }) => {
       const filters: SQL[] = [
-        eq(s.workSamples.studentId, input.student_id),
+        eq(s.workSamples.studentId, studentId),
         // Only cleanly scanned files ever reach the AI.
         eq(s.workSamples.scanStatus, "clean"),
       ];
@@ -69,7 +69,7 @@ export function registerWorkTools(server: McpServer): void {
       "Prior AI analyses of a student's work, including their teacher review status — " +
       "use this to compare with previous work and avoid duplicate analyses.",
     inputSchema: {
-      student_id: z.string().uuid().optional(),
+      student_id: STUDENT_REF.optional(),
       work_sample_id: z.string().uuid().optional(),
     },
     consent: ["work_uploads", "ai_work_analysis"],
@@ -117,7 +117,7 @@ export function registerWorkTools(server: McpServer): void {
     },
     consent: ["work_uploads", "ai_work_analysis"],
     resolveStudentId: (input, db) => studentIdOfWorkSample(db, input.work_sample_id),
-    handler: async (input, { db }) => {
+    handler: async (input, { db, studentId }) => {
       const [row] = await db
         .insert(s.workAnalyses)
         .values({

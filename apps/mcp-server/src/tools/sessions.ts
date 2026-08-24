@@ -2,7 +2,7 @@ import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { desc, eq, inArray } from "drizzle-orm";
 import { z } from "zod";
 import { schema as s } from "@platform/db";
-import { defineTool } from "../define-tool.js";
+import { STUDENT_REF, defineTool } from "../define-tool.js";
 
 export function registerSessionTools(server: McpServer): void {
   defineTool(server, {
@@ -11,11 +11,11 @@ export function registerSessionTools(server: McpServer): void {
       "Past AI sessions for one student with per-activity stats (topic, attempted/correct, engagement). " +
       "Transcripts are included only when conversation-storage consent is granted.",
     inputSchema: {
-      student_id: z.string().uuid(),
+      student_id: STUDENT_REF,
       limit: z.number().int().min(1).max(20).default(5),
     },
     consent: ["ai_interaction"],
-    handler: async (input, { db, consents }) => {
+    handler: async (input, { db, consents, studentId }) => {
       const sessions = await db
         .select({
           session_id: s.aiSessions.id,
@@ -25,7 +25,7 @@ export function registerSessionTools(server: McpServer): void {
           supervision_mode: s.aiSessions.supervisionMode,
         })
         .from(s.aiSessions)
-        .where(eq(s.aiSessions.studentId, input.student_id))
+        .where(eq(s.aiSessions.studentId, studentId))
         .orderBy(desc(s.aiSessions.startedAt))
         .limit(input.limit);
 
