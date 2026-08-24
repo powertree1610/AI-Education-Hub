@@ -6,7 +6,7 @@ import { DEV_USER_COOKIE } from "@/lib/auth";
 import { authMode } from "@/lib/env";
 
 export async function devLoginAction(formData: FormData) {
-  if (authMode() === "clerk") redirect("/sign-in");
+  if (authMode() !== "dev") redirect("/sign-in");
   const email = String(formData.get("email") ?? "");
   const cookieStore = await cookies();
   cookieStore.set(DEV_USER_COOKIE, email, { httpOnly: true, sameSite: "lax", path: "/" });

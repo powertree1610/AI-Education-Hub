@@ -34,7 +34,8 @@ Production env vars come from the **service configuration** (WinSW/NSSM), NOT `.
 - `DATABASE_URL_APP` (web), `DATABASE_URL_AI` (mcp) — pooled Neon endpoints, `sslmode=require`
 - `AI_API_SERVER_URL`, `LICENSE_KEY`
 - `DEFAULT_MODEL`, `OCR_MODEL` (fallbacks; license values win)
-- `NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY`, `CLERK_SECRET_KEY`
+- `AUTH_SECRET` — long random string; enables self-hosted credentials auth (the default).
+  (Clerk keys instead would switch to Clerk mode — dormant option.)
 - `MCP_URL=http://localhost:6710/mcp`, `MCP_SHARED_SECRET` (long random string, same on both services)
 - `UPLOAD_DIR` — **absolute path** on a backed-up data volume
 - `TRANSCRIPT_RETENTION_DAYS`
@@ -127,7 +128,9 @@ when a teacher ends a kiosk session.)
 - Staff chat streams through IIS; kiosk reachable from a LAN device.
 - Upload → preview a JPG and a PDF.
 - `UPLOAD_DIR` included in backups; Neon PITR enabled.
-- Clerk: production instance keys; pre-provision staff `core.users` rows before first sign-in.
+- Auth: set `AUTH_SECRET`, bootstrap the first admin password with
+  `pnpm --filter @platform/db exec tsx scripts/set-password.ts <email> <password>`,
+  then create staff + set passwords at `/admin/users`.
 
 ## Known gaps (as of v2)
 

@@ -8,7 +8,7 @@ import { devLoginAction } from "./actions";
 export const dynamic = "force-dynamic";
 
 export default async function DevLoginPage() {
-  if (authMode() === "clerk") redirect("/sign-in");
+  if (authMode() !== "dev") redirect("/sign-in");
 
   const users = await getDb()
     .select({ email: s.users.email, name: s.users.name, role: s.users.role })

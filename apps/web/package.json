@@ -14,8 +14,10 @@
     "@modelcontextprotocol/sdk": "^1.29.0",
     "@platform/db": "workspace:*",
     "@platform/shared": "workspace:*",
+    "bcryptjs": "^3.0.3",
     "drizzle-orm": "^0.44.0",
     "next": "^15.3.0",
+    "next-auth": "5.0.0-beta.32",
     "pdf-to-img": "^6.2.0",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
@@ -25,6 +27,7 @@
   },
   "devDependencies": {
     "@tailwindcss/postcss": "^4.0.0",
+    "@types/bcryptjs": "^3.0.0",
     "@types/node": "^22.5.0",
     "@types/react": "^19.0.0",
     "@types/react-dom": "^19.0.0",
