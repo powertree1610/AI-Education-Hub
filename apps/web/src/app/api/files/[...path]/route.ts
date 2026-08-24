@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { canUserAccessStudent } from "@platform/shared";
 import { currentAppUser } from "@/lib/auth";
 import { getDb } from "@/lib/db";
+import { isChildOfGuardianUser } from "@/lib/parents";
 import { getStorage } from "@/lib/storage";
 
 const CONTENT_TYPES: Record<string, string> = {
@@ -21,7 +22,7 @@ export async function GET(
   { params }: { params: Promise<{ path: string[] }> },
 ) {
   const user = await currentAppUser();
-  if (!user || (user.role !== "admin" && user.role !== "teacher")) {
+  if (!user || user.role === "student") {
     return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   }
 
@@ -38,6 +39,9 @@ export async function GET(
       studentId,
     });
     if (!allowed) return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+  } else if (user.role === "guardian") {
+    const { ok } = await isChildOfGuardianUser(getDb(), user.id, studentId);
+    if (!ok) return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   }
 
   const key = segments.join("/");

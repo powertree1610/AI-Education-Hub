@@ -67,7 +67,7 @@ export default async function ClassesPage() {
         <div className="col-span-2">
           <button
             type="submit"
-            className="rounded-md bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700"
+            className="rounded-md bg-teal-700 px-4 py-2 text-sm font-medium text-white hover:bg-teal-800"
           >
             Create class
           </button>

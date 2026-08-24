@@ -114,7 +114,7 @@ export default async function ClassDetailPage({ params }: { params: Promise<{ id
             </select>
             <button
               type="submit"
-              className="rounded-md bg-blue-600 px-3 py-2 text-sm font-medium text-white hover:bg-blue-700"
+              className="rounded-md bg-teal-700 px-3 py-2 text-sm font-medium text-white hover:bg-teal-800"
             >
               Assign
             </button>
@@ -128,7 +128,7 @@ export default async function ClassDetailPage({ params }: { params: Promise<{ id
           {enrollments.map((e) => (
             <li key={e.enrollmentId} className="flex items-center justify-between px-4 py-2 text-sm">
               <span>
-                <Link href={`/admin/students/${e.studentId}`} className="font-medium text-blue-600 hover:underline">
+                <Link href={`/admin/students/${e.studentId}`} className="font-medium text-teal-700 hover:underline">
                   {e.studentName}
                 </Link>{" "}
                 <span className="text-slate-500">
@@ -159,7 +159,7 @@ export default async function ClassDetailPage({ params }: { params: Promise<{ id
             </select>
             <button
               type="submit"
-              className="rounded-md bg-blue-600 px-3 py-2 text-sm font-medium text-white hover:bg-blue-700"
+              className="rounded-md bg-teal-700 px-3 py-2 text-sm font-medium text-white hover:bg-teal-800"
             >
               Enroll
             </button>

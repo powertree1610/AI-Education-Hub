@@ -1,6 +1,7 @@
 import { SignIn } from "@clerk/nextjs";
 import { redirect } from "next/navigation";
 import { credentialsSignInAction } from "@/actions/auth";
+import { BrandMark } from "@/components/brand";
 import { authMode } from "@/lib/env";
 
 export const dynamic = "force-dynamic";
@@ -23,10 +24,15 @@ export default async function SignInPage({
   const { error } = await searchParams;
 
   return (
-    <main className="flex min-h-screen items-center justify-center">
-      <div className="w-full max-w-sm rounded-lg border border-slate-200 bg-white p-6 shadow-sm">
-        <h1 className="text-lg font-semibold">Sign in</h1>
-        <p className="mt-1 text-sm text-slate-500">Student Platform staff access</p>
+    <main className="flex min-h-screen items-center justify-center px-4">
+      <div className="w-full max-w-sm rounded-2xl border border-slate-200 bg-white p-8 shadow-sm">
+        <div className="flex items-center gap-3">
+          <BrandMark size={40} />
+          <div>
+            <h1 className="text-lg font-semibold tracking-tight">Student Platform</h1>
+            <p className="text-sm text-slate-500">Sign in to continue</p>
+          </div>
+        </div>
         {error ? (
           <p className="mt-3 rounded-md bg-red-50 px-3 py-2 text-sm text-red-700">
             Wrong email or password. After 5 failed tries, sign-in locks for 5 minutes.
@@ -55,7 +61,7 @@ export default async function SignInPage({
           </label>
           <button
             type="submit"
-            className="w-full rounded-md bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700"
+            className="w-full rounded-md bg-teal-700 px-4 py-2 text-sm font-medium text-white hover:bg-teal-800"
           >
             Sign in
           </button>

@@ -12,13 +12,23 @@ export function ChatWindow({
   endpoint,
   initialMessages,
   payloadKey = "chatId",
+  variant = "staff",
 }: {
   chatId: string;
   endpoint: string;
   initialMessages: DisplayMessage[];
   /** Name of the id field in the POST body ("chatId" for staff, "sessionId" for kiosk). */
   payloadKey?: "chatId" | "sessionId";
+  /** "kid" = bigger type, rounder warmer bubbles for the kiosk. */
+  variant?: "staff" | "kid";
 }) {
+  const kid = variant === "kid";
+  const userBubble = kid
+    ? "max-w-[80%] whitespace-pre-wrap rounded-2xl rounded-br-md bg-amber-400 px-4 py-2.5 text-base font-medium text-amber-950"
+    : "max-w-[80%] whitespace-pre-wrap rounded-lg bg-teal-700 px-3 py-2 text-sm text-white";
+  const botBubble = kid
+    ? "max-w-[80%] whitespace-pre-wrap rounded-2xl rounded-bl-md bg-teal-50 px-4 py-2.5 text-base text-teal-950"
+    : "max-w-[80%] whitespace-pre-wrap rounded-lg bg-slate-100 px-3 py-2 text-sm";
   const [messages, setMessages] = useState<DisplayMessage[]>(initialMessages);
   const [input, setInput] = useState("");
   const [busy, setBusy] = useState(false);
@@ -114,11 +124,17 @@ export function ChatWindow({
   }
 
   return (
-    <div className="flex h-[calc(100vh-8rem)] flex-col rounded-lg border border-slate-200 bg-white">
+    <div
+      className={`flex h-[calc(100vh-8rem)] flex-col overflow-hidden border bg-white ${
+        kid ? "rounded-3xl border-amber-200 shadow-md" : "rounded-xl border-slate-200 shadow-sm"
+      }`}
+    >
       <div className="flex-1 space-y-3 overflow-y-auto p-4">
         {messages.length === 0 ? (
-          <p className="text-sm text-slate-400">
-            Ask about a student, or ask me to analyse an uploaded piece of work.
+          <p className={kid ? "text-base text-slate-400" : "text-sm text-slate-400"}>
+            {kid
+              ? "Say hello to start! 👋"
+              : "Ask about a student, or ask me to analyse an uploaded piece of work."}
           </p>
         ) : null}
         {messages.map((msg, i) =>
@@ -128,15 +144,7 @@ export function ChatWindow({
             </div>
           ) : (
             <div key={i} className={msg.role === "user" ? "flex justify-end" : "flex"}>
-              <div
-                className={
-                  msg.role === "user"
-                    ? "max-w-[80%] whitespace-pre-wrap rounded-lg bg-blue-600 px-3 py-2 text-sm text-white"
-                    : "max-w-[80%] whitespace-pre-wrap rounded-lg bg-slate-100 px-3 py-2 text-sm"
-                }
-              >
-                {msg.text}
-              </div>
+              <div className={msg.role === "user" ? userBubble : botBubble}>{msg.text}</div>
             </div>
           ),
         )}
@@ -160,7 +168,7 @@ export function ChatWindow({
         <button
           onClick={() => void send()}
           disabled={busy || !input.trim()}
-          className="rounded-md bg-blue-600 px-4 text-sm font-medium text-white disabled:opacity-50"
+          className="rounded-md bg-teal-700 px-4 text-sm font-medium text-white disabled:opacity-50"
         >
           Send
         </button>

@@ -125,6 +125,12 @@ export default async function TeacherStudentPage({
           >
             Student interview
           </Link>
+          <Link
+            href={`/teacher/students/${id}/reports`}
+            className="rounded-md border border-slate-300 px-3 py-1.5 hover:bg-slate-50"
+          >
+            Reports
+          </Link>
         </div>
       </div>
 
@@ -138,7 +144,7 @@ export default async function TeacherStudentPage({
               <li key={`${l.kind}-${l.key}`} className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm">
                 <span className="font-medium">{l.key}</span>{" "}
                 <span className="text-slate-500">({l.kind === "academic_skill" ? "academic" : "development"})</span>
-                <div className="text-lg font-semibold text-indigo-700">{l.score} / 5</div>
+                <div className="text-lg font-semibold text-teal-800">{l.score} / 5</div>
               </li>
             ))}
           </ul>

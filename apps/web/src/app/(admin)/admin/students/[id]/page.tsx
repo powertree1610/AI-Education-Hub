@@ -4,6 +4,7 @@ import { and, desc, eq, isNull } from "drizzle-orm";
 import { schema as s } from "@platform/db";
 import { CONSENT_TYPES, getCurrentConsents, parseLocalUrl } from "@platform/shared";
 import { endStudentTeacherAction, linkStudentTeacherAction } from "@/actions/classes";
+import { enableGuardianPortalAction } from "@/actions/parents";
 import { setConsentAction } from "@/actions/students";
 import { uploadWorkSampleAction } from "@/actions/uploads";
 import { ResultsSection } from "@/components/results-section";
@@ -28,6 +29,8 @@ export default async function StudentDetailPage({
 
   const guardians = await db
     .select({
+      guardianId: s.guardians.id,
+      userId: s.guardians.userId,
       name: s.guardians.name,
       phone: s.guardians.phone,
       email: s.guardians.email,
@@ -139,12 +142,29 @@ export default async function StudentDetailPage({
         ) : (
           <ul className="mt-2 rounded-lg border border-slate-200 bg-white text-sm">
             {guardians.map((g, i) => (
-              <li key={i} className="flex gap-4 border-b border-slate-100 px-4 py-2 last:border-0">
-                <span className="font-medium">{g.name}</span>
-                <span className="text-slate-500">{g.relationship}</span>
-                <span className="text-slate-500">{g.phone ?? ""}</span>
-                <span className="text-slate-500">{g.email ?? ""}</span>
-                {g.isPrimary ? <span className="text-xs text-blue-600">primary</span> : null}
+              <li
+                key={i}
+                className="flex items-center justify-between border-b border-slate-100 px-4 py-2 last:border-0"
+              >
+                <span className="flex gap-4">
+                  <span className="font-medium">{g.name}</span>
+                  <span className="text-slate-500">{g.relationship}</span>
+                  <span className="text-slate-500">{g.phone ?? ""}</span>
+                  <span className="text-slate-500">{g.email ?? ""}</span>
+                  {g.isPrimary ? <span className="text-xs text-teal-700">primary</span> : null}
+                </span>
+                {g.userId ? (
+                  <span className="text-xs text-green-600">portal ✓</span>
+                ) : g.email ? (
+                  <form action={enableGuardianPortalAction}>
+                    <input type="hidden" name="guardianId" value={g.guardianId} />
+                    <button type="submit" className="text-xs text-teal-700 hover:underline">
+                      enable portal access
+                    </button>
+                  </form>
+                ) : (
+                  <span className="text-xs text-slate-400">no email — portal unavailable</span>
+                )}
               </li>
             ))}
           </ul>
@@ -210,7 +230,7 @@ export default async function StudentDetailPage({
             </select>
             <button
               type="submit"
-              className="rounded-md bg-blue-600 px-3 py-2 text-sm font-medium text-white hover:bg-blue-700"
+              className="rounded-md bg-teal-700 px-3 py-2 text-sm font-medium text-white hover:bg-teal-800"
             >
               Link teacher
             </button>
@@ -291,7 +311,7 @@ export default async function StudentDetailPage({
                         <Link
                           href={`/api/files/${key}`}
                           target="_blank"
-                          className="text-blue-600 hover:underline"
+                          className="text-teal-700 hover:underline"
                         >
                           preview
                         </Link>
@@ -363,7 +383,7 @@ export default async function StudentDetailPage({
           <div className="col-span-2">
             <button
               type="submit"
-              className="rounded-md bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700"
+              className="rounded-md bg-teal-700 px-4 py-2 text-sm font-medium text-white hover:bg-teal-800"
             >
               Upload
             </button>

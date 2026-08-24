@@ -49,5 +49,8 @@ pnpm --filter @platform/db pull                      # re-introspect schema (re-
 3. Staff chat (`/teacher/chat`): the agent calls MCP tools, OCRs the actual work file, and files `save_work_analysis` / `save_observation` — always **pending review**.
 4. Teacher starts a kiosk session (`/teacher/sessions`) → student chats with the tutor in their preferred language → activities logged → on end, the transcript is stored **only if** `conversation_storage` consent is granted.
 5. Teacher review queue (`/teacher/review`): approving an observation with a proposed level change applies it to `student_levels` (append-only) in one transaction with a sparse audit row.
+6. **Parent portal** (`/parent`): admin enables portal access for a guardian (student page) + sets a password (`/admin/users`); parents see own children only — published progress reports, results, session *summaries* (never transcripts), goals (can propose), work uploads (always `source=home`), and a digital consent centre.
+7. **Progress reports** (`/teacher/students/[id]/reports`): AI drafts (consent-gated on `progress_reports`) → teacher edits & publishes → parents see the published version only.
+8. **Dashboards**: `/admin` (consent gaps, baseline completion, portfolio coverage, AI usage & cost per feature) and teacher stat cards on `/teacher`.
 
 Deployment (Windows Server + IIS): see [DEPLOYMENT.md](DEPLOYMENT.md).

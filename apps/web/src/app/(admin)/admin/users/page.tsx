@@ -65,7 +65,7 @@ export default async function UsersPage() {
                       placeholder={u.hasPassword ? "reset…" : "set password…"}
                       className="w-32 rounded border border-slate-300 px-2 py-1 text-xs"
                     />
-                    <button type="submit" className="text-xs text-blue-600 hover:underline">
+                    <button type="submit" className="text-xs text-teal-700 hover:underline">
                       save
                     </button>
                     {u.hasPassword ? <span className="text-xs text-green-600">✓</span> : null}
@@ -114,7 +114,7 @@ export default async function UsersPage() {
         <div className="col-span-2">
           <button
             type="submit"
-            className="rounded-md bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700"
+            className="rounded-md bg-teal-700 px-4 py-2 text-sm font-medium text-white hover:bg-teal-800"
           >
             Create user
           </button>

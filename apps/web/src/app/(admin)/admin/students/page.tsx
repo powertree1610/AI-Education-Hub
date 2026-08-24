@@ -23,7 +23,7 @@ export default async function StudentsPage() {
         <h1 className="text-xl font-semibold">Students</h1>
         <Link
           href="/admin/students/new"
-          className="rounded-md bg-blue-600 px-3 py-2 text-sm font-medium text-white hover:bg-blue-700"
+          className="rounded-md bg-teal-700 px-3 py-2 text-sm font-medium text-white hover:bg-teal-800"
         >
           Register student
         </Link>
@@ -49,7 +49,7 @@ export default async function StudentsPage() {
                 <td className="px-4 py-2">{st.grade ?? "—"}</td>
                 <td className="px-4 py-2">{st.status}</td>
                 <td className="px-4 py-2 text-right">
-                  <Link href={`/admin/students/${st.id}`} className="text-blue-600 hover:underline">
+                  <Link href={`/admin/students/${st.id}`} className="text-teal-700 hover:underline">
                     open
                   </Link>
                 </td>
