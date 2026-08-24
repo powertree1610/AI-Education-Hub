@@ -29,7 +29,7 @@ export default async function SignInPage({
         <p className="mt-1 text-sm text-slate-500">Student Platform staff access</p>
         {error ? (
           <p className="mt-3 rounded-md bg-red-50 px-3 py-2 text-sm text-red-700">
-            Wrong email or password, or too many attempts — wait 15 minutes.
+            Wrong email or password. After 5 failed tries, sign-in locks for 5 minutes.
           </p>
         ) : null}
         <form action={credentialsSignInAction} className="mt-4 space-y-3">

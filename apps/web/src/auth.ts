@@ -13,20 +13,26 @@ import { getDb } from "@/lib/db";
  * Sessions are signed JWT cookies (AUTH_SECRET) — nothing stored server-side.
  */
 
-// Simple in-process lockout: 5 failed attempts per email → 15 min.
+// Simple in-process lockout: 5 failed attempts per email → 5 min.
+// Once the lock expires the counter resets, so the user gets a fresh 5 tries.
 const attempts = new Map<string, { fails: number; lockedUntil: number }>();
 const MAX_FAILS = 5;
-const LOCK_MS = 15 * 60 * 1000;
+const LOCK_MS = 5 * 60 * 1000;
 
 function isLocked(email: string): boolean {
   const entry = attempts.get(email);
-  return !!entry && entry.fails >= MAX_FAILS && Date.now() < entry.lockedUntil;
+  if (!entry || entry.fails < MAX_FAILS) return false;
+  if (Date.now() >= entry.lockedUntil) {
+    attempts.delete(email); // lock expired — start over
+    return false;
+  }
+  return true;
 }
 
 function recordFail(email: string): void {
   const entry = attempts.get(email) ?? { fails: 0, lockedUntil: 0 };
   entry.fails += 1;
-  entry.lockedUntil = Date.now() + LOCK_MS;
+  if (entry.fails >= MAX_FAILS) entry.lockedUntil = Date.now() + LOCK_MS;
   attempts.set(email, entry);
 }
 
