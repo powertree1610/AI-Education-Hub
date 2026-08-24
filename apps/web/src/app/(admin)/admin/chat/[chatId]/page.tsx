@@ -3,12 +3,12 @@ import { requireRoleOrRedirect } from "@/lib/guard";
 
 export const dynamic = "force-dynamic";
 
-export default async function TeacherChatPage({
+export default async function AdminChatPage({
   params,
 }: {
   params: Promise<{ chatId: string }>;
 }) {
-  const user = await requireRoleOrRedirect("teacher", "admin");
+  const user = await requireRoleOrRedirect("admin");
   const { chatId } = await params;
   return <ChatSession user={user} chatId={chatId} />;
 }

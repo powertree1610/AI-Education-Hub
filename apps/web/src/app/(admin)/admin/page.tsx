@@ -62,11 +62,18 @@ export default async function AdminDashboard() {
   const monthCost = Number((usage.rows[0] as { cost: string }).cost);
 
   const usageByType = await getDb().execute(sql`
-    select usage_type, count(*)::int as calls, sum(total_tokens)::bigint as tokens,
+    select usage_type as name, count(*)::int as calls, sum(total_tokens)::bigint as tokens,
            sum(estimated_cost)::numeric(12,4) as cost
     from core.ai_usage_logs
     where created_at >= date_trunc('month', now())
     group by usage_type order by sum(total_tokens) desc
+  `);
+  const usageByModel = await getDb().execute(sql`
+    select model as name, count(*)::int as calls, sum(total_tokens)::bigint as tokens,
+           sum(estimated_cost)::numeric(12,4) as cost
+    from core.ai_usage_logs
+    where created_at >= date_trunc('month', now())
+    group by model order by sum(total_tokens) desc
   `);
 
   return (
@@ -83,38 +90,70 @@ export default async function AdminDashboard() {
 
       <section>
         <h2 className="font-medium">
-          AI usage this month — {(monthTokens / 1000).toFixed(1)}k tokens · ${monthCost.toFixed(2)}
+          AI usage this month — {fmtTokens(monthTokens)} tokens · ${monthCost.toFixed(2)}
         </h2>
-        <table className="mt-2 w-full max-w-lg rounded-lg border border-slate-200 bg-white text-sm">
-          <thead>
-            <tr className="border-b border-slate-200 text-left text-slate-500">
-              <th className="px-3 py-2 font-medium">Feature</th>
-              <th className="px-3 py-2 font-medium">Calls</th>
-              <th className="px-3 py-2 font-medium">Tokens</th>
-              <th className="px-3 py-2 font-medium">Est. cost</th>
-            </tr>
-          </thead>
-          <tbody>
-            {(usageByType.rows as { usage_type: string; calls: number; tokens: string; cost: string }[]).map(
-              (row) => (
-                <tr key={row.usage_type} className="border-b border-slate-100 last:border-0">
-                  <td className="px-3 py-2">{row.usage_type}</td>
-                  <td className="px-3 py-2">{row.calls}</td>
-                  <td className="px-3 py-2">{Number(row.tokens).toLocaleString()}</td>
-                  <td className="px-3 py-2">${Number(row.cost).toFixed(4)}</td>
-                </tr>
-              ),
-            )}
-            {usageByType.rows.length === 0 ? (
-              <tr>
-                <td colSpan={4} className="px-3 py-2 text-slate-500">
-                  No AI usage this month.
-                </td>
-              </tr>
-            ) : null}
-          </tbody>
-        </table>
+        <div className="mt-3 grid gap-4 md:grid-cols-2">
+          <UsageMeterList title="Usage by model" rows={usageByModel.rows as unknown as UsageRow[]} />
+          <UsageMeterList title="Usage by feature" rows={usageByType.rows as unknown as UsageRow[]} />
+        </div>
+        <p className="mt-2 text-xs text-slate-400">
+          Cost depends on the model, not just tokens — the same tokens on gpt-5.4-mini cost
+          more than on deepseek-v4-flash, which is why the two views can rank differently.
+        </p>
       </section>
+    </div>
+  );
+}
+
+interface UsageRow {
+  name: string;
+  calls: number;
+  tokens: string;
+  cost: string;
+}
+
+function fmtTokens(n: number): string {
+  return n >= 1000 ? `${(n / 1000).toFixed(1)}k` : String(n);
+}
+
+/** Meter list: one measure (tokens) → one hue; values printed in ink, the bar
+ *  only carries magnitude. */
+function UsageMeterList({ title, rows }: { title: string; rows: UsageRow[] }) {
+  const max = Math.max(1, ...rows.map((r) => Number(r.tokens)));
+  return (
+    <div className="rounded-lg border border-slate-200 bg-white p-4">
+      <h3 className="text-sm font-medium text-slate-600">{title}</h3>
+      {rows.length === 0 ? (
+        <p className="mt-2 text-sm text-slate-400">No usage this month.</p>
+      ) : (
+        <ul className="mt-3 space-y-3">
+          {rows.map((row) => {
+            const tokens = Number(row.tokens);
+            return (
+              <li key={row.name}>
+                <div className="flex items-baseline justify-between gap-3 text-sm">
+                  <span className="font-medium">{row.name}</span>
+                  <span className="whitespace-nowrap text-xs text-slate-400">
+                    {row.calls} request{row.calls === 1 ? "" : "s"}
+                  </span>
+                  <span className="w-20 text-right">
+                    <span className="block font-semibold leading-tight">{fmtTokens(tokens)}</span>
+                    <span className="block text-xs leading-tight text-slate-400">
+                      ${Number(row.cost).toFixed(4)}
+                    </span>
+                  </span>
+                </div>
+                <div className="mt-1 h-1.5 overflow-hidden rounded-full bg-slate-100">
+                  <div
+                    className="h-full rounded-full bg-teal-600"
+                    style={{ width: `${Math.max(2, (tokens / max) * 100)}%` }}
+                  />
+                </div>
+              </li>
+            );
+          })}
+        </ul>
+      )}
     </div>
   );
 }
