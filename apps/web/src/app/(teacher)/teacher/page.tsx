@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { inArray } from "drizzle-orm";
+import { and, eq, gte, inArray, lte, sql } from "drizzle-orm";
 import { schema as s } from "@platform/db";
 import { listAccessibleStudentIds } from "@platform/shared";
 import { requireRoleOrRedirect } from "@/lib/guard";
@@ -26,8 +26,69 @@ export default async function TeacherHome() {
     }
   }
 
+  const studentIds = students.map((st) => st.id);
+  const weekAgo = new Date(Date.now() - 7 * 24 * 3600 * 1000).toISOString();
+  const soon = new Date(Date.now() + 7 * 24 * 3600 * 1000).toISOString().slice(0, 10);
+
+  let pendingReviews = 0;
+  let sessionsThisWeek = 0;
+  let goalReviewsDue = 0;
+  if (studentIds.length > 0) {
+    const [pa] = (
+      await db
+        .select({ n: sql<number>`count(*)::int` })
+        .from(s.workAnalyses)
+        .innerJoin(s.workSamples, eq(s.workSamples.id, s.workAnalyses.workSampleId))
+        .where(
+          and(
+            eq(s.workAnalyses.reviewStatus, "pending_review"),
+            inArray(s.workSamples.studentId, studentIds),
+          ),
+        )
+    );
+    const [po] = await db
+      .select({ n: sql<number>`count(*)::int` })
+      .from(s.observations)
+      .where(and(eq(s.observations.status, "unverified"), inArray(s.observations.studentId, studentIds)));
+    pendingReviews = (pa?.n ?? 0) + (po?.n ?? 0);
+
+    const [sw] = await db
+      .select({ n: sql<number>`count(*)::int` })
+      .from(s.aiSessions)
+      .where(and(inArray(s.aiSessions.studentId, studentIds), gte(s.aiSessions.startedAt, weekAgo)));
+    sessionsThisWeek = sw?.n ?? 0;
+
+    const [gd] = await db
+      .select({ n: sql<number>`count(*)::int` })
+      .from(s.goals)
+      .where(
+        and(
+          inArray(s.goals.studentId, studentIds),
+          inArray(s.goals.status, ["active", "improving"]),
+          lte(s.goals.reviewDate, soon),
+        ),
+      );
+    goalReviewsDue = gd?.n ?? 0;
+  }
+
+  const stat = (value: number, label: string, href: string, warn = false) => (
+    <Link
+      href={href}
+      className={`rounded-lg border bg-white p-4 ${warn && value > 0 ? "border-amber-300" : "border-slate-200"}`}
+    >
+      <div className={`text-2xl font-semibold ${warn && value > 0 ? "text-amber-600" : ""}`}>{value}</div>
+      <div className="mt-1 text-sm text-slate-500">{label}</div>
+    </Link>
+  );
+
   return (
     <div>
+      <div className="mb-6 grid grid-cols-2 gap-4 md:grid-cols-4">
+        {stat(students.length, "My students", "/teacher")}
+        {stat(pendingReviews, "Pending AI reviews", "/teacher/review", true)}
+        {stat(sessionsThisWeek, "Sessions this week", "/teacher/sessions")}
+        {stat(goalReviewsDue, "Goal reviews due (7d)", "/teacher", true)}
+      </div>
       <h1 className="text-xl font-semibold">My Students</h1>
       {students.length === 0 ? (
         <p className="mt-4 text-sm text-slate-500">

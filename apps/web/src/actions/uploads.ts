@@ -3,9 +3,10 @@
 import { randomUUID } from "node:crypto";
 import { revalidatePath } from "next/cache";
 import { schema as s } from "@platform/db";
-import { formatLocalUrl, writeAudit } from "@platform/shared";
+import { canUserAccessStudent, formatLocalUrl, writeAudit } from "@platform/shared";
 import { requireAppUser } from "@/lib/auth";
 import { getDb } from "@/lib/db";
+import { isChildOfGuardianUser } from "@/lib/parents";
 import { getStorage } from "@/lib/storage";
 
 const MAX_BYTES = 15 * 1024 * 1024;
@@ -21,7 +22,7 @@ type WorkType = (typeof s.workTypeInCore.enumValues)[number];
 type WorkSource = (typeof s.workSourceInCore.enumValues)[number];
 
 export async function uploadWorkSampleAction(formData: FormData) {
-  const user = await requireAppUser("admin", "teacher");
+  const user = await requireAppUser("admin", "teacher", "guardian");
   const db = getDb();
 
   const studentId = String(formData.get("studentId") ?? "");
@@ -29,12 +30,24 @@ export async function uploadWorkSampleAction(formData: FormData) {
   if (!(file instanceof File) || file.size === 0) throw new Error("No file selected");
   if (file.size > MAX_BYTES) throw new Error("File exceeds the 15 MB limit");
 
+  if (user.role === "guardian") {
+    const { ok } = await isChildOfGuardianUser(db, user.id, studentId);
+    if (!ok) throw new Error("Not your child");
+  } else if (user.role === "teacher") {
+    const allowed = await canUserAccessStudent(db, { userId: user.id, role: "teacher", studentId });
+    if (!allowed) throw new Error("You are not assigned to this student");
+  }
+
   const ext = ALLOWED_MIME[file.type];
   if (!ext) throw new Error(`Unsupported file type: ${file.type || "unknown"} (JPG, PNG, WebP or PDF)`);
 
   const workType = String(formData.get("workType") ?? "") as WorkType;
   if (!s.workTypeInCore.enumValues.includes(workType)) throw new Error("Invalid work type");
-  const source = (String(formData.get("source") ?? "") || "centre") as WorkSource;
+  // Parents always upload as "home" — they cannot label work as school/centre.
+  const source =
+    user.role === "guardian"
+      ? ("home" as WorkSource)
+      : ((String(formData.get("source") ?? "") || "centre") as WorkSource);
   if (!s.workSourceInCore.enumValues.includes(source)) throw new Error("Invalid source");
   const subjectId = String(formData.get("subjectId") ?? "") || null;
 
@@ -81,4 +94,5 @@ export async function uploadWorkSampleAction(formData: FormData) {
   });
 
   revalidatePath(`/admin/students/${studentId}`);
+  revalidatePath(`/parent/children/${studentId}`);
 }

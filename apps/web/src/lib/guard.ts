@@ -19,7 +19,7 @@ export async function requireRoleOrRedirect(...roles: AppUser["role"][]): Promis
 export function homePathFor(role: AppUser["role"]): string {
   switch (role) {
     case "admin":
-      return "/admin/students";
+      return "/admin";
     case "teacher":
       return "/teacher";
     case "guardian":

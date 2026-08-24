@@ -125,6 +125,12 @@ export default async function TeacherStudentPage({
           >
             Student interview
           </Link>
+          <Link
+            href={`/teacher/students/${id}/reports`}
+            className="rounded-md border border-slate-300 px-3 py-1.5 hover:bg-slate-50"
+          >
+            Reports
+          </Link>
         </div>
       </div>
 
