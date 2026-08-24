@@ -2,9 +2,53 @@
 
 import { useRef, useState } from "react";
 
+export interface TurnUsage {
+  model: string;
+  apiCalls?: number;
+  toolsUsed?: number;
+  promptTokens: number;
+  completionTokens: number;
+  totalTokens: number;
+  inputCost: number;
+  outputCost: number;
+  totalCost: number;
+}
+
 export interface DisplayMessage {
-  role: "user" | "assistant" | "tool_note";
+  role: "user" | "assistant" | "tool_note" | "usage";
   text: string;
+  usage?: TurnUsage;
+}
+
+const fmt = new Intl.NumberFormat("en-US");
+
+/** Per-turn usage bar: model · calls · tools · tokens · cost, expandable. */
+function UsageBar({ usage }: { usage: TurnUsage }) {
+  const [open, setOpen] = useState(false);
+  return (
+    <div className="text-xs">
+      <button
+        onClick={() => setOpen((v) => !v)}
+        className="inline-flex items-center gap-2 rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-slate-500 hover:border-slate-300"
+        title="Turn usage — click for the breakdown"
+      >
+        <span className="font-medium text-slate-600">{usage.model}</span>
+        {usage.apiCalls != null ? <span>· {usage.apiCalls} API call{usage.apiCalls === 1 ? "" : "s"}</span> : null}
+        {usage.toolsUsed != null ? <span>· {usage.toolsUsed} tool{usage.toolsUsed === 1 ? "" : "s"} used</span> : null}
+        <span>· ~{fmt.format(usage.totalTokens)} tokens</span>
+        <span className="text-teal-700">· ~${usage.totalCost.toFixed(4)}</span>
+        <span className="text-slate-400">{open ? "▴" : "▾"}</span>
+      </button>
+      {open ? (
+        <div className="mt-1 flex gap-4 border-l-2 border-slate-200 pl-3 text-slate-400">
+          <span>Input: ~{fmt.format(usage.promptTokens)} tokens</span>
+          <span>Output: ~{fmt.format(usage.completionTokens)} tokens</span>
+          <span>Input cost: ${usage.inputCost.toFixed(4)}</span>
+          <span>Output cost: ${usage.outputCost.toFixed(4)}</span>
+        </div>
+      ) : null}
+    </div>
+  );
 }
 
 export function ChatWindow({
@@ -85,13 +129,34 @@ export function ChatWindow({
         buffer = lines.pop() || "";
         for (const line of lines) {
           if (!line.startsWith("data: ")) continue;
-          let event: { type: string; text?: string; name?: string; isError?: boolean; message?: string };
+          let event: {
+            type: string;
+            text?: string;
+            name?: string;
+            isError?: boolean;
+            message?: string;
+          } & Partial<TurnUsage>;
           try {
             event = JSON.parse(line.slice(6));
           } catch {
             continue;
           }
           if (event.type === "delta" && event.text) appendAssistant(event.text);
+          else if (event.type === "usage" && event.model) {
+            const usage: TurnUsage = {
+              model: event.model,
+              apiCalls: event.apiCalls,
+              toolsUsed: event.toolsUsed,
+              promptTokens: event.promptTokens ?? 0,
+              completionTokens: event.completionTokens ?? 0,
+              totalTokens: event.totalTokens ?? 0,
+              inputCost: event.inputCost ?? 0,
+              outputCost: event.outputCost ?? 0,
+              totalCost: event.totalCost ?? 0,
+            };
+            setMessages((m) => [...m, { role: "usage", text: "", usage }]);
+            scroll();
+          }
           else if (event.type === "tool_start") {
             assistantStarted = false;
             setMessages((m) => [...m, { role: "tool_note", text: `⚙ ${event.name}…` }]);
@@ -138,7 +203,9 @@ export function ChatWindow({
           </p>
         ) : null}
         {messages.map((msg, i) =>
-          msg.role === "tool_note" ? (
+          msg.role === "usage" && msg.usage ? (
+            <UsageBar key={i} usage={msg.usage} />
+          ) : msg.role === "tool_note" ? (
             <div key={i} className="text-xs text-slate-400">
               {msg.text}
             </div>

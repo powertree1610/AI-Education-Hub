@@ -1,25 +1,58 @@
 import { notFound } from "next/navigation";
 import { asc, eq } from "drizzle-orm";
 import { schema as s } from "@platform/db";
-import { ChatWindow, type DisplayMessage } from "@/components/chat-window";
+import { ChatWindow, type DisplayMessage, type TurnUsage } from "@/components/chat-window";
 import type { ChatMessage, ToolCall } from "@/lib/ai/central-api";
+import { estimateCostParts } from "@/lib/ai/usage-log";
 import { requireRoleOrRedirect } from "@/lib/guard";
 import { getDb } from "@/lib/db";
 
 export const dynamic = "force-dynamic";
 
-function toDisplay(rows: { content: unknown }[]): DisplayMessage[] {
+interface StoredRow {
+  content: unknown;
+  modelVersion: string | null;
+  inputTokens: number | null;
+  outputTokens: number | null;
+}
+
+function toDisplay(rows: StoredRow[]): DisplayMessage[] {
   const out: DisplayMessage[] = [];
+  let turnApiCalls = 0;
+  let turnTools = 0;
+
   for (const row of rows) {
     const msg = row.content as ChatMessage;
     if (msg.role === "user" && typeof msg.content === "string") {
+      turnApiCalls = 0;
+      turnTools = 0;
       out.push({ role: "user", text: msg.content });
     } else if (msg.role === "assistant") {
+      turnApiCalls++;
       for (const tc of msg.tool_calls ?? []) {
+        turnTools++;
         out.push({ role: "tool_note", text: `⚙ ${(tc as ToolCall).function.name} ✓` });
       }
       if (typeof msg.content === "string" && msg.content.trim()) {
         out.push({ role: "assistant", text: msg.content });
+      }
+      // The final row of each turn carries the aggregated token counts.
+      if (row.modelVersion && (row.inputTokens ?? 0) + (row.outputTokens ?? 0) > 0) {
+        const promptTokens = row.inputTokens ?? 0;
+        const completionTokens = row.outputTokens ?? 0;
+        const cost = estimateCostParts(row.modelVersion, promptTokens, completionTokens);
+        const usage: TurnUsage = {
+          model: row.modelVersion,
+          apiCalls: turnApiCalls,
+          toolsUsed: turnTools,
+          promptTokens,
+          completionTokens,
+          totalTokens: promptTokens + completionTokens,
+          inputCost: cost.input,
+          outputCost: cost.output,
+          totalCost: cost.total,
+        };
+        out.push({ role: "usage", text: "", usage });
       }
     }
     // tool-result rows are internal replay state, not displayed
@@ -38,7 +71,12 @@ export default async function ChatPage({ params }: { params: Promise<{ chatId: s
   if (!chat || chat.userId !== user.id) notFound();
 
   const rows = await db
-    .select({ content: s.agentChatMessages.content })
+    .select({
+      content: s.agentChatMessages.content,
+      modelVersion: s.agentChatMessages.modelVersion,
+      inputTokens: s.agentChatMessages.inputTokens,
+      outputTokens: s.agentChatMessages.outputTokens,
+    })
     .from(s.agentChatMessages)
     .where(eq(s.agentChatMessages.chatId, chatId))
     .orderBy(asc(s.agentChatMessages.createdAt));

@@ -7,7 +7,7 @@ import { resolveChatModel } from "@/lib/ai/license";
 import { LOCAL_TOOLS } from "@/lib/ai/local-tools";
 import { listMcpToolsAsOpenAi } from "@/lib/ai/mcp-client";
 import { staffSystemPrompt } from "@/lib/ai/prompts";
-import { logUsage } from "@/lib/ai/usage-log";
+import { estimateCostParts, logUsage } from "@/lib/ai/usage-log";
 import { currentAppUser } from "@/lib/auth";
 import { getDb } from "@/lib/db";
 
@@ -106,6 +106,23 @@ export async function POST(req: NextRequest) {
           userId: user.id,
           studentId: chat.studentId,
           refId: chatId,
+        });
+
+        // Per-turn usage bar for the UI.
+        const promptTokens = result.usage.prompt_tokens ?? 0;
+        const completionTokens = result.usage.completion_tokens ?? 0;
+        const cost = estimateCostParts(model, promptTokens, completionTokens);
+        emit({
+          type: "usage",
+          model,
+          apiCalls: result.apiCalls,
+          toolsUsed: result.toolsUsed,
+          promptTokens,
+          completionTokens,
+          totalTokens: result.usage.total_tokens ?? promptTokens + completionTokens,
+          inputCost: cost.input,
+          outputCost: cost.output,
+          totalCost: cost.total,
         });
 
         emit({ type: "done" });

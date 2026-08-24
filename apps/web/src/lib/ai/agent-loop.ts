@@ -31,6 +31,10 @@ export interface AgentTurnResult {
   /** Messages produced this turn (assistant + tool), for persistence/replay. */
   newMessages: ChatMessage[];
   usage: UsageInfo;
+  /** Model requests made this turn (loop iterations). */
+  apiCalls: number;
+  /** Tool executions this turn (MCP + local). */
+  toolsUsed: number;
 }
 
 /** DeepSeek occasionally emits hallucinated DSML tool markup — strip it. */
@@ -79,8 +83,11 @@ export async function runAgentTurn(opts: {
   const newMessages: ChatMessage[] = [];
   const totalUsage: UsageInfo = { prompt_tokens: 0, completion_tokens: 0, total_tokens: 0 };
   let finalContent = "";
+  let apiCalls = 0;
+  let toolsUsed = 0;
 
   for (let iteration = 0; iteration < maxIterations; iteration++) {
+    apiCalls++;
     let assistantContent = "";
     const toolCallAccum = new Map<number, { id: string; name: string; arguments: string }>();
     let finishReason = "";
@@ -139,6 +146,7 @@ export async function runAgentTurn(opts: {
     newMessages.push(assistantMsg);
 
     for (const toolCall of assistantToolCalls) {
+      toolsUsed++;
       const name = toolCall.function.name;
       let args: Record<string, unknown> = {};
       try {
@@ -212,5 +220,5 @@ export async function runAgentTurn(opts: {
     opts.events.onDelta(finalContent);
   }
 
-  return { finalContent, newMessages, usage: totalUsage };
+  return { finalContent, newMessages, usage: totalUsage, apiCalls, toolsUsed };
 }

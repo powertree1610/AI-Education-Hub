@@ -43,18 +43,26 @@ const PRICING: Record<string, { input: number; output: number }> = {
   "deepseek-v4-pro": { input: 1.74, output: 3.48 },
 };
 
+export function estimateCostParts(
+  model: string,
+  promptTokens: number,
+  completionTokens: number,
+): { input: number; output: number; total: number } {
+  // Unknown hosted models default to gpt-4o pricing; slash-namespaced
+  // free-tier models default to 0 (ERP convention).
+  const fallback = model.includes("/") ? { input: 0, output: 0 } : PRICING["gpt-4o"]!;
+  const prices = PRICING[model] ?? fallback;
+  const input = (promptTokens / 1_000_000) * prices.input;
+  const output = (completionTokens / 1_000_000) * prices.output;
+  return { input, output, total: input + output };
+}
+
 export function estimateCost(
   model: string,
   promptTokens: number,
   completionTokens: number,
 ): number {
-  // Unknown hosted models default to gpt-4o pricing; slash-namespaced
-  // free-tier models default to 0 (ERP convention).
-  const fallback = model.includes("/") ? { input: 0, output: 0 } : PRICING["gpt-4o"]!;
-  const prices = PRICING[model] ?? fallback;
-  return (
-    (promptTokens / 1_000_000) * prices.input + (completionTokens / 1_000_000) * prices.output
-  );
+  return estimateCostParts(model, promptTokens, completionTokens).total;
 }
 
 export async function logUsage(
