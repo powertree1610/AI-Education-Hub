@@ -3,6 +3,7 @@
 import { and, eq } from "drizzle-orm";
 import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
+import { after } from "next/server";
 import { schema as s } from "@platform/db";
 import {
   canUserAccessStudent,
@@ -10,6 +11,7 @@ import {
   writeAudit,
   type TranscriptMessage,
 } from "@platform/shared";
+import { runPostSessionPass } from "@/lib/ai/post-session";
 import { requireAppUser } from "@/lib/auth";
 import { getDb } from "@/lib/db";
 import { clearKioskHistory, kioskHistory } from "@/lib/kiosk-state";
@@ -111,6 +113,36 @@ export async function endSessionAction(formData: FormData) {
       details: { messageCount: messages.length },
     });
   }
+  // Per-session observation pass (design §9): capture the evidence BEFORE
+  // clearing the running context, run after the response so teardown is never
+  // slowed or broken by the AI call.
+  if (history.length > 0) {
+    const transcriptText = history
+      .filter((m) => (m.role === "user" || m.role === "assistant") && typeof m.content === "string")
+      .map((m) => `${m.role === "user" ? "student" : "tutor"}: ${m.content as string}`)
+      .join("\n");
+    const activities = await db
+      .select({
+        activityType: s.sessionActivities.activityType,
+        topic: s.sessionActivities.topic,
+        attempted: s.sessionActivities.attempted,
+        correct: s.sessionActivities.correct,
+        hintsUsed: s.sessionActivities.hintsUsed,
+        engagementLevel: s.sessionActivities.engagementLevel,
+      })
+      .from(s.sessionActivities)
+      .where(eq(s.sessionActivities.sessionId, sessionId));
+
+    after(() =>
+      runPostSessionPass({
+        sessionId,
+        studentId: session.studentId,
+        activities,
+        transcriptText: transcriptText || null,
+      }),
+    );
+  }
+
   clearKioskHistory(sessionId);
 
   revalidatePath("/teacher/sessions");

@@ -7,11 +7,14 @@ export function requireEnv(name: string): string {
 }
 
 /**
- * Auth mode: Clerk when keys are configured, otherwise a dev-only fallback
- * (cookie-selected seeded user via /dev-login). Production must use Clerk.
+ * Auth mode, by configuration:
+ *  - "clerk": Clerk keys configured (dormant option, kept for a future HQ setup)
+ *  - "local": AUTH_SECRET configured — self-hosted Auth.js credentials
+ *             (email + bcrypt password_hash in core.users). Production default.
+ *  - "dev":   nothing configured — cookie-selected seeded user via /dev-login.
  */
-export function authMode(): "clerk" | "dev" {
-  return process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY && process.env.CLERK_SECRET_KEY
-    ? "clerk"
-    : "dev";
+export function authMode(): "clerk" | "local" | "dev" {
+  if (process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY && process.env.CLERK_SECRET_KEY) return "clerk";
+  if (process.env.AUTH_SECRET) return "local";
+  return "dev";
 }

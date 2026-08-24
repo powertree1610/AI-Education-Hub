@@ -12,6 +12,7 @@
     "pull": "drizzle-kit pull",
     "seed": "tsx scripts/seed.ts",
     "check": "tsx scripts/check.ts",
+    "purge-transcripts": "tsx scripts/purge-transcripts.ts",
     "test": "tsx --test \"src/**/*.test.ts\""
   },
   "dependencies": {
@@ -19,8 +20,10 @@
     "pg": "^8.16.0"
   },
   "devDependencies": {
+    "@types/bcryptjs": "^3.0.0",
     "@types/node": "^22.5.0",
     "@types/pg": "^8.11.0",
+    "bcryptjs": "^3.0.3",
     "dotenv": "^16.4.7",
     "drizzle-kit": "^0.31.0",
     "tsx": "^4.19.2",

@@ -25,7 +25,11 @@ pnpm check:db               # verifies seeds, views, and the role-grant boundary
 pnpm dev                    # web on :3000 + mcp-server on :6710
 ```
 
-Without Clerk keys configured, the app runs in **dev auth mode**: `/dev-login` lists the seeded users (admin / teacher / parent). Add `NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY` + `CLERK_SECRET_KEY` to switch to Clerk — staff are pre-provisioned in `core.users` by an admin and bound to their Clerk account by email on first sign-in (JIT, no webhook needed).
+**Auth** is self-hosted (Auth.js v5 credentials — email + bcrypt password in `core.users.password_hash`, signed JWT session cookie). Modes by configuration:
+
+- `AUTH_SECRET` set → **local auth** (production default). Bootstrap the first admin with `pnpm --filter @platform/db exec tsx scripts/set-password.ts <email> <password>`; manage users/passwords at `/admin/users`. Failed logins are rate-limited (5 → 15 min) and audited.
+- Clerk keys set → **Clerk** (dormant option if HQ ever provisions it; JIT-binds by email).
+- Nothing set → **dev mode**: `/dev-login` lists seeded users, no passwords.
 
 Env vars are documented in [.env.example](.env.example). Three DB connection strings, never mixed: owner (scripts), `app_user` (web), `ai_agent` (MCP).
 

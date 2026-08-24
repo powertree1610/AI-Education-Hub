@@ -452,6 +452,8 @@ export const usersInCore = core.table("users", {
 	id: uuid().defaultRandom().primaryKey().notNull(),
 	email: citext("email"),
 	authIdentity: varchar("auth_identity", { length: 255 }),
+	// MANUAL FIX after drizzle-kit pull: added by migrations/0003_password_hash.sql.
+	passwordHash: varchar("password_hash", { length: 100 }),
 	role: userRoleInCore().notNull(),
 	name: varchar({ length: 200 }).notNull(),
 	phone: varchar({ length: 50 }),

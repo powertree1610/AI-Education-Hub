@@ -27,13 +27,29 @@ function toAppUser(row: typeof s.users.$inferSelect): AppUser {
  *      row with no auth_identity yet, and backfill auth_identity (first login).
  *   3. No match → null (unprovisioned account; UI shows "ask your admin").
  *
- * Dev mode (no Clerk keys configured): the dev-user-email cookie set by
- * /dev-login selects a seeded user. Never active once Clerk keys exist.
+ * Local mode (AUTH_SECRET set): Auth.js JWT session cookie → users row by id.
+ *
+ * Dev mode (nothing configured): the dev-user-email cookie set by /dev-login
+ * selects a seeded user. Never active once local or Clerk auth is configured.
  */
 export async function currentAppUser(): Promise<AppUser | null> {
   const db = getDb();
+  const mode = authMode();
 
-  if (authMode() === "clerk") {
+  if (mode === "local") {
+    const { auth } = await import("@/auth");
+    const session = await auth();
+    const userId = (session?.user as { id?: string } | undefined)?.id;
+    if (!userId) return null;
+    const rows = await db
+      .select()
+      .from(s.users)
+      .where(and(eq(s.users.id, userId), eq(s.users.isActive, true)))
+      .limit(1);
+    return rows[0] ? toAppUser(rows[0]) : null;
+  }
+
+  if (mode === "clerk") {
     const { auth, currentUser } = await import("@clerk/nextjs/server");
     const { userId } = await auth();
     if (!userId) return null;

@@ -4,7 +4,7 @@ import { currentAppUser, type AppUser } from "./auth";
 import { authMode } from "./env";
 
 export function signInPath(): string {
-  return authMode() === "clerk" ? "/sign-in" : "/dev-login";
+  return authMode() === "dev" ? "/dev-login" : "/sign-in";
 }
 
 /** For route-group layouts: redirect when unauthenticated or wrong role. */

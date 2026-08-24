@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { localSignOutAction } from "@/actions/auth";
 import type { AppUser } from "@/lib/auth";
 import { authMode } from "@/lib/env";
 import { devLogoutAction } from "@/app/dev-login/actions";
@@ -40,6 +41,13 @@ export function PortalShell({
               <form action={devLogoutAction}>
                 <button type="submit" className="text-slate-400 underline hover:text-slate-600">
                   switch user
+                </button>
+              </form>
+            ) : null}
+            {authMode() === "local" ? (
+              <form action={localSignOutAction}>
+                <button type="submit" className="text-slate-400 underline hover:text-slate-600">
+                  sign out
                 </button>
               </form>
             ) : null}

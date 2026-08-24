@@ -69,6 +69,8 @@ export function registerObservationTools(server: McpServer): void {
       confidence: z.number().min(0).max(1),
       proposed_change: PROPOSED_CHANGE_SCHEMA.optional(),
       model_version: z.string().optional(),
+      /** Set by the weekly synthesis job so its proposals are grouped in the queue. */
+      synthesis_batch_id: z.string().uuid().optional(),
     },
     consent: ["development_tracking"],
     handler: async (input, { db }) => {
@@ -85,6 +87,7 @@ export function registerObservationTools(server: McpServer): void {
           proposedChange: input.proposed_change ?? null,
           status: "unverified",
           modelVersion: input.model_version ?? null,
+          synthesisBatchId: input.synthesis_batch_id ?? null,
         })
         .returning({ id: s.observations.id });
 
