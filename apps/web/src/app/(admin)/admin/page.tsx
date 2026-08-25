@@ -52,6 +52,10 @@ export default async function AdminDashboard() {
           + (select count(*) from core.observations where status='unverified'))::int as n
   `);
 
+  const unreviewedSafety = await scalar(sql`
+    select count(*)::int as n from core.safety_events where reviewed_at is null
+  `);
+
   const usage = await getDb().execute(sql`
     select coalesce(sum(total_tokens),0)::bigint as tokens,
            coalesce(sum(estimated_cost),0)::numeric(12,4) as cost
@@ -80,12 +84,13 @@ export default async function AdminDashboard() {
     <div className="max-w-4xl space-y-8">
       <h1 className="text-xl font-semibold">Dashboard</h1>
 
-      <div className="grid grid-cols-2 gap-4 md:grid-cols-5">
+      <div className="grid grid-cols-2 gap-4 md:grid-cols-3">
         <StatCard label="Active students" value={activeStudents} href="/admin/students" />
         <StatCard label="Students with consent gaps" value={consentGaps} warn={consentGaps > 0} />
         <StatCard label="Missing teacher baseline" value={missingBaseline} warn={missingBaseline > 0} />
         <StatCard label="Portfolio below 3 items" value={thinPortfolio} warn={thinPortfolio > 0} />
         <StatCard label="Pending AI reviews" value={pendingReviews} href="/teacher/review" warn={pendingReviews > 0} />
+        <StatCard label="Unreviewed safety events" value={unreviewedSafety} href="/admin/safety" warn={unreviewedSafety > 0} />
       </div>
 
       <section>

@@ -95,3 +95,38 @@ export async function setUserActiveAction(formData: FormData) {
 
   revalidatePath("/admin/users");
 }
+
+/** Designate (or remove) the safeguarding lead flag on a staff account. */
+export async function toggleSafeguardingLeadAction(formData: FormData) {
+  const admin = await requireAppUser("admin");
+  const db = getDb();
+
+  const userId = String(formData.get("userId") ?? "");
+  const next = formData.get("next") === "true";
+
+  const target = (await db.select().from(s.users).where(eq(s.users.id, userId)).limit(1))[0];
+  if (!target || (target.role !== "teacher" && target.role !== "admin")) {
+    throw new Error("Safeguarding lead must be a staff account");
+  }
+
+  const branch = (await db.select().from(s.branches).limit(1))[0];
+  if (!branch) throw new Error("No branch configured");
+  await db
+    .insert(s.staffProfiles)
+    .values({ userId, branchId: branch.id, position: target.role === "admin" ? "Admin" : "Teacher", isSafeguardingLead: next })
+    .onConflictDoUpdate({
+      target: s.staffProfiles.userId,
+      set: { isSafeguardingLead: next },
+    });
+
+  await writeAudit(db, {
+    actorType: "user",
+    actorId: admin.id,
+    action: "safeguarding_lead_toggled",
+    entityType: "user",
+    entityId: userId,
+    details: { to: next },
+  });
+
+  revalidatePath("/admin/users");
+}

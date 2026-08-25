@@ -1,8 +1,9 @@
 import { and, eq } from "drizzle-orm";
 import { NextRequest } from "next/server";
 import { schema as s } from "@platform/db";
-import { canUserAccessStudent } from "@platform/shared";
+import { canUserAccessStudent, decideSafetyAction } from "@platform/shared";
 import { runAgentTurn } from "@/lib/ai/agent-loop";
+import { classifyContent, deflectionMessage, recordSafetyEvent } from "@/lib/ai/safety";
 import type { ChatMessage, OpenAiTool } from "@/lib/ai/central-api";
 import { KIOSK_LOCAL_TOOLS, callKioskLocalTool, isKioskLocalTool } from "@/lib/ai/kiosk-tools";
 import { resolveChatModel } from "@/lib/ai/license";
@@ -15,11 +16,29 @@ import { kioskHistory } from "@/lib/kiosk-state";
 
 export const dynamic = "force-dynamic";
 
-/** Read-only MCP subset the kiosk agent may use — no write tools, no results/observations. */
-const KIOSK_MCP_TOOLS = new Set(["get_student_learning_profile", "get_goals", "get_session_history"]);
+/** Read-only MCP subset the kiosk agent may use — no write tools, no
+ *  results/observations — plus the insert-only safeguarding flag (disclosure
+ *  happens at the kiosk more than anywhere else). */
+const KIOSK_MCP_TOOLS = new Set([
+  "get_student_learning_profile",
+  "get_goals",
+  "get_session_history",
+  "flag_safeguarding_concern",
+]);
 
 function sseEncode(payload: Record<string, unknown>): string {
   return `data: ${JSON.stringify(payload)}\n\n`;
+}
+
+const SSE_HEADERS = {
+  "Content-Type": "text/event-stream",
+  "Cache-Control": "no-cache, no-transform",
+  Connection: "keep-alive",
+} as const;
+
+/** A complete, immediately-closed SSE response (used for safety deflections). */
+function sseOnce(events: Record<string, unknown>[]): Response {
+  return new Response(events.map(sseEncode).join(""), { headers: SSE_HEADERS });
 }
 
 export async function POST(req: NextRequest) {
@@ -63,6 +82,38 @@ export async function POST(req: NextRequest) {
   );
 
   const model = await resolveChatModel("kiosk");
+
+  // Safety gate (M9): classify the child's message BEFORE the agent sees it.
+  // Blocked/redirected text lives only in safety_events.excerpt — the agent
+  // context and the transcript get a withheld marker instead.
+  const trimmed = message.trim();
+  const inputVerdict = await classifyContent({
+    surface: "chat_input",
+    text: trimmed,
+    studentAge: age,
+    studentId: session.studentId,
+    sessionId,
+  });
+  if (!inputVerdict.safe) {
+    const decision = decideSafetyAction(inputVerdict.category, inputVerdict.severity);
+    await recordSafetyEvent({
+      studentId: session.studentId,
+      sessionId,
+      surface: "chat_input",
+      verdict: inputVerdict,
+      decision,
+      classifierModel: model,
+      text: trimmed,
+    });
+    if (decision.action !== "allowed") {
+      const deflection = deflectionMessage(student.preferredAiLanguage);
+      const gatedHistory = kioskHistory(sessionId);
+      gatedHistory.push({ role: "user", content: "[message withheld by safety filter]" });
+      gatedHistory.push({ role: "assistant", content: deflection });
+      return sseOnce([{ type: "delta", text: deflection }, { type: "done" }]);
+    }
+  }
+
   let mcpTools: OpenAiTool[];
   try {
     mcpTools = (await listMcpToolsAsOpenAi()).filter((t) => KIOSK_MCP_TOOLS.has(t.function.name));
@@ -75,7 +126,7 @@ export async function POST(req: NextRequest) {
   const tools = [...mcpTools, ...KIOSK_LOCAL_TOOLS];
 
   const history = kioskHistory(sessionId);
-  const userMessage: ChatMessage = { role: "user", content: message.trim() };
+  const userMessage: ChatMessage = { role: "user", content: trimmed };
   history.push(userMessage);
 
   const encoder = new TextEncoder();
@@ -122,6 +173,35 @@ export async function POST(req: NextRequest) {
         });
 
         emit({ type: "done" });
+
+        // Output check runs after `done` (the child is never kept waiting):
+        // flagged replies are recorded — and escalated if warranted — but a
+        // reply that already streamed is not retracted.
+        const outText = result.newMessages
+          .filter((m) => m.role === "assistant" && typeof m.content === "string")
+          .map((m) => m.content as string)
+          .join("\n")
+          .trim();
+        if (outText) {
+          const outVerdict = await classifyContent({
+            surface: "chat_output",
+            text: outText,
+            studentAge: age,
+            studentId: session.studentId,
+            sessionId,
+          });
+          if (!outVerdict.safe) {
+            await recordSafetyEvent({
+              studentId: session.studentId,
+              sessionId,
+              surface: "chat_output",
+              verdict: outVerdict,
+              decision: decideSafetyAction(outVerdict.category, outVerdict.severity),
+              classifierModel: model,
+              text: outText,
+            });
+          }
+        }
       } catch (err) {
         emit({ type: "error", message: (err as Error).message });
       } finally {
@@ -130,11 +210,5 @@ export async function POST(req: NextRequest) {
     },
   });
 
-  return new Response(stream, {
-    headers: {
-      "Content-Type": "text/event-stream",
-      "Cache-Control": "no-cache, no-transform",
-      Connection: "keep-alive",
-    },
-  });
+  return new Response(stream, { headers: SSE_HEADERS });
 }
