@@ -1,8 +1,9 @@
 import { PortalShell } from "@/components/portal-shell";
-import { requireRoleOrRedirect } from "@/lib/guard";
+import { isSafeguardingLead, requireRoleOrRedirect } from "@/lib/guard";
 
 export default async function AdminLayout({ children }: { children: React.ReactNode }) {
   const user = await requireRoleOrRedirect("admin");
+  const lead = await isSafeguardingLead(user.id);
   return (
     <PortalShell
       title="Admin"
@@ -12,7 +13,9 @@ export default async function AdminLayout({ children }: { children: React.ReactN
         { href: "/admin/students", label: "Students" },
         { href: "/admin/classes", label: "Classes" },
         { href: "/admin/users", label: "Users" },
+        { href: "/admin/safety", label: "Safety" },
         { href: "/admin/chat", label: "AI Chat" },
+        ...(lead ? [{ href: "/safeguarding", label: "Safeguarding" }] : []),
       ]}
     >
       {children}

@@ -1,6 +1,9 @@
 import "server-only";
+import { eq } from "drizzle-orm";
 import { redirect } from "next/navigation";
+import { schema as s } from "@platform/db";
 import { currentAppUser, type AppUser } from "./auth";
+import { getDb } from "./db";
 import { authMode } from "./env";
 
 export function signInPath(): string {
@@ -12,6 +15,25 @@ export async function requireRoleOrRedirect(...roles: AppUser["role"][]): Promis
   const user = await currentAppUser();
   if (!user) redirect(signInPath());
   if (roles.length > 0 && !roles.includes(user.role)) redirect("/");
+  return user;
+}
+
+/** Safeguarding lead is a flag on a staff account, not a role (design §4). */
+export async function isSafeguardingLead(userId: string): Promise<boolean> {
+  const rows = await getDb()
+    .select({ lead: s.staffProfiles.isSafeguardingLead })
+    .from(s.staffProfiles)
+    .where(eq(s.staffProfiles.userId, userId))
+    .limit(1);
+  return rows[0]?.lead === true;
+}
+
+/** For the safeguarding module: any role, but ONLY the flagged lead — an
+ *  unflagged admin is turned away too. */
+export async function requireSafeguardingLead(): Promise<AppUser> {
+  const user = await currentAppUser();
+  if (!user) redirect(signInPath());
+  if (!(await isSafeguardingLead(user.id))) redirect("/");
   return user;
 }
 
