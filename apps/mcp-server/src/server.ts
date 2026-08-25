@@ -3,6 +3,7 @@ import { registerGoalTools } from "./tools/goals.js";
 import { registerObservationTools } from "./tools/observations.js";
 import { registerProfileTools } from "./tools/profile.js";
 import { registerResultsTools } from "./tools/results.js";
+import { registerSafeguardingTools } from "./tools/safeguarding.js";
 import { registerSessionTools } from "./tools/sessions.js";
 import { registerWorkTools } from "./tools/work.js";
 
@@ -18,5 +19,6 @@ export function buildServer(): McpServer {
   registerObservationTools(server);
   registerGoalTools(server);
   registerSessionTools(server);
+  registerSafeguardingTools(server);
   return server;
 }

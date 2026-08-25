@@ -16,8 +16,15 @@ import { kioskHistory } from "@/lib/kiosk-state";
 
 export const dynamic = "force-dynamic";
 
-/** Read-only MCP subset the kiosk agent may use — no write tools, no results/observations. */
-const KIOSK_MCP_TOOLS = new Set(["get_student_learning_profile", "get_goals", "get_session_history"]);
+/** Read-only MCP subset the kiosk agent may use — no write tools, no
+ *  results/observations — plus the insert-only safeguarding flag (disclosure
+ *  happens at the kiosk more than anywhere else). */
+const KIOSK_MCP_TOOLS = new Set([
+  "get_student_learning_profile",
+  "get_goals",
+  "get_session_history",
+  "flag_safeguarding_concern",
+]);
 
 function sseEncode(payload: Record<string, unknown>): string {
   return `data: ${JSON.stringify(payload)}\n\n`;
