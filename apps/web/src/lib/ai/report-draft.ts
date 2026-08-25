@@ -1,7 +1,7 @@
 import "server-only";
 import { and, asc, desc, eq, inArray } from "drizzle-orm";
 import { schema as s, type Db } from "@platform/db";
-import { chatCompletion } from "./central-api";
+import { chatCompletion, parseModelJson } from "./central-api";
 import { resolveChatModel } from "./license";
 
 /**
@@ -102,10 +102,9 @@ export async function generateReportDraft(
   });
 
   const raw = String(res.choices?.[0]?.message?.content ?? "").trim();
-  const cleaned = raw.replace(/^```(?:json)?/m, "").replace(/```$/m, "").trim();
   let draft: ReportDraft;
   try {
-    const parsed = JSON.parse(cleaned) as Partial<ReportDraft>;
+    const parsed = parseModelJson<Partial<ReportDraft>>(raw);
     draft = {
       summary: String(parsed.summary ?? ""),
       results_trend: String(parsed.results_trend ?? ""),

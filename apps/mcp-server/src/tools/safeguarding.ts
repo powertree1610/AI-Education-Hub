@@ -24,13 +24,18 @@ export function registerSafeguardingTools(server: McpServer): void {
         .max(2000)
         .describe("Factual description of the concern, quoting what was said or seen — no diagnosis"),
       confidence: z.number().min(0).max(1),
+      session_ref: z
+        .string()
+        .uuid()
+        .optional()
+        .describe("AI session this arose in — auto-filled at the kiosk; omit if unknown"),
     },
     consent: [],
     handler: async (input, { db, studentId }) => {
       await db.execute(
-        sql`select core.flag_safeguarding_concern(${studentId}::uuid, ${input.reason}, ${input.confidence}, null)`,
+        sql`select core.flag_safeguarding_concern(${studentId}::uuid, ${input.reason}, ${input.confidence}, ${input.session_ref ?? null})`,
       );
-      return { flagged: true, note: "Safeguarding lead notified. This record is write-only for you." };
+      return { flagged: true, note: "The safeguarding case has been recorded. It is write-only for you." };
     },
   });
 }

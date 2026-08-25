@@ -57,9 +57,30 @@ function getConfig() {
  * Ported from the ERP tokenParamFor helper.
  */
 export function tokenParamFor(model: string, max: number): { max_tokens?: number; max_completion_tokens?: number } {
-  return /^(gpt-5|o1-|o3-|o4-|chatgpt-)/.test(model.toLowerCase())
-    ? { max_completion_tokens: max }
-    : { max_tokens: max };
+  return isReasoningFamily(model) ? { max_completion_tokens: max } : { max_tokens: max };
+}
+
+/** Models that reject max_tokens AND non-default temperature. */
+export function isReasoningFamily(model: string): boolean {
+  return /^(gpt-5|o1-|o3-|o4-|chatgpt-)/.test(model.toLowerCase());
+}
+
+/**
+ * Parse a JSON object out of a model reply that may wrap it in code fences
+ * or surrounding prose. Throws when no parseable object is found — the
+ * caller decides what failure means (report-draft degrades to raw text;
+ * the safety classifier must treat it explicitly, never silently).
+ */
+export function parseModelJson<T>(raw: string): T {
+  const trimmed = raw.trim();
+  try {
+    return JSON.parse(trimmed) as T;
+  } catch {
+    const start = trimmed.indexOf("{");
+    const end = trimmed.lastIndexOf("}");
+    if (start === -1 || end <= start) throw new Error("No JSON object in model reply");
+    return JSON.parse(trimmed.slice(start, end + 1)) as T;
+  }
 }
 
 export async function chatCompletion(params: {

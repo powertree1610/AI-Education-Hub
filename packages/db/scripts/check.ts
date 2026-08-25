@@ -68,6 +68,25 @@ async function main() {
   expect("ai_agent CANNOT write core.student_levels", await priv("ai_agent", "core.student_levels", "INSERT"), false);
   expect("ai_agent can insert core.audit_log", await priv("ai_agent", "core.audit_log", "INSERT"), true);
 
+  console.log("── v4 safety & safeguarding surface ──");
+  try {
+    const fn = await db.execute(
+      sql`select has_function_privilege('ai_agent', 'core.flag_safeguarding_concern(uuid,text,numeric,uuid)', 'EXECUTE') as ok`,
+    );
+    expect("ai_agent can EXECUTE core.flag_safeguarding_concern", (fn.rows[0] as { ok: boolean }).ok, true);
+  } catch (err) {
+    failures++;
+    console.log(`FAIL  core.flag_safeguarding_concern(uuid,text,numeric,uuid) missing: ${(err as Error).message}`);
+  }
+  expect("ai_agent has NO access to core.safety_events", await priv("ai_agent", "core.safety_events", "SELECT"), false);
+  expect("app_user can insert core.safety_events", await priv("app_user", "core.safety_events", "INSERT"), true);
+  expect("app_user can update core.safety_events (mark reviewed)", await priv("app_user", "core.safety_events", "UPDATE"), true);
+  expect("app_user can read restricted.safeguarding_records", await priv("app_user", "restricted.safeguarding_records", "SELECT"), true);
+  expect("app_user can insert restricted.safeguarding_records (referrals/escalations)", await priv("app_user", "restricted.safeguarding_records", "INSERT"), true);
+  expect("app_user can update restricted.safeguarding_records (status)", await priv("app_user", "restricted.safeguarding_records", "UPDATE"), true);
+  expect("app_user can read restricted.safeguarding_reviews", await priv("app_user", "restricted.safeguarding_reviews", "SELECT"), true);
+  expect("app_user can insert restricted.safeguarding_reviews", await priv("app_user", "restricted.safeguarding_reviews", "INSERT"), true);
+
   console.log("── app_user grants ──");
   expect("app_user can read core.students", await priv("app_user", "core.students", "SELECT"), true);
   expect("app_user can insert core.students", await priv("app_user", "core.students", "INSERT"), true);

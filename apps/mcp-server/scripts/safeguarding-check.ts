@@ -10,8 +10,9 @@ import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/
 import "../src/lib/env.js";
 
 const studentRef = process.argv[2];
+const sessionRef = process.argv[3]; // optional ai_sessions.id
 if (!studentRef) {
-  console.error("usage: tsx scripts/safeguarding-check.ts <student_ref>");
+  console.error("usage: tsx scripts/safeguarding-check.ts <student_ref> [session_ref]");
   process.exit(1);
 }
 
@@ -36,6 +37,7 @@ async function main() {
       student_id: studentRef,
       reason: "[DEV CHECK] Smoke-test flag from safeguarding-check.ts — ignore and close.",
       confidence: 0.5,
+      ...(sessionRef ? { session_ref: sessionRef } : {}),
     },
   });
   const text = (res.content as { type: string; text?: string }[])

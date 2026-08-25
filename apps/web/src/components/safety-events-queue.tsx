@@ -7,8 +7,9 @@ import { getDb } from "@/lib/db";
 /**
  * Shared safety-events queue — rendered in the admin shell (/admin/safety)
  * and the lead shell (/safeguarding/events). Unreviewed first, worst first.
+ * The mark-reviewed action revalidates both routes, so no back-path threading.
  */
-export async function SafetyEventsQueue({ backPath }: { backPath: "/admin/safety" | "/safeguarding/events" }) {
+export async function SafetyEventsQueue() {
   const reviewer = alias(s.users, "reviewer");
   const rows = await getDb()
     .select({
@@ -107,7 +108,6 @@ export async function SafetyEventsQueue({ backPath }: { backPath: "/admin/safety
                   ) : (
                     <form action={markSafetyEventReviewedAction}>
                       <input type="hidden" name="eventId" value={e.id} />
-                      <input type="hidden" name="backPath" value={backPath} />
                       <button className="rounded-md border border-slate-300 px-2 py-1 text-xs hover:bg-slate-50">
                         Mark reviewed
                       </button>

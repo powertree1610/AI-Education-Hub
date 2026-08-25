@@ -7,15 +7,12 @@ import { resolveChatModel } from "@/lib/ai/license";
 import { LOCAL_TOOLS } from "@/lib/ai/local-tools";
 import { listMcpToolsAsOpenAi } from "@/lib/ai/mcp-client";
 import { staffSystemPrompt } from "@/lib/ai/prompts";
+import { SSE_HEADERS, sseEncode } from "@/lib/ai/sse";
 import { estimateCostParts, logUsage } from "@/lib/ai/usage-log";
 import { currentAppUser } from "@/lib/auth";
 import { getDb } from "@/lib/db";
 
 export const dynamic = "force-dynamic";
-
-function sseEncode(payload: Record<string, unknown>): string {
-  return `data: ${JSON.stringify(payload)}\n\n`;
-}
 
 export async function POST(req: NextRequest) {
   const user = await currentAppUser();
@@ -134,11 +131,5 @@ export async function POST(req: NextRequest) {
     },
   });
 
-  return new Response(stream, {
-    headers: {
-      "Content-Type": "text/event-stream",
-      "Cache-Control": "no-cache, no-transform",
-      Connection: "keep-alive",
-    },
-  });
+  return new Response(stream, { headers: SSE_HEADERS });
 }

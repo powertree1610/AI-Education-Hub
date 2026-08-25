@@ -14,7 +14,11 @@ export interface AuditEntry {
   details?: Record<string, unknown>;
 }
 
-export async function writeAudit(db: Db, entry: AuditEntry): Promise<void> {
+/** Accepts the db or a transaction — audit rows written inside a transaction
+ *  must still go through this choke point, never a raw insert. */
+type AuditWriter = Pick<Db, "insert">;
+
+export async function writeAudit(db: AuditWriter, entry: AuditEntry): Promise<void> {
   await db.insert(s.auditLog).values({
     actorType: entry.actorType,
     actorId: entry.actorId ?? null,

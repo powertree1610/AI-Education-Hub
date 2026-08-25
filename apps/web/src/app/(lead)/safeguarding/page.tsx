@@ -1,6 +1,9 @@
 import Link from "next/link";
 import { sql } from "drizzle-orm";
+import { OPEN_SAFEGUARDING_STATUSES, isOpenStatus } from "@platform/shared";
 import { getDb } from "@/lib/db";
+import { requireSafeguardingLead } from "@/lib/guard";
+import { sourceLabel } from "@/lib/safeguarding-labels";
 
 export const dynamic = "force-dynamic";
 
@@ -14,21 +17,11 @@ interface CaseRow {
   student_code: string;
 }
 
-const SOURCE_LABELS: Record<string, string> = {
-  student_statement: "Student statement",
-  teacher_observation: "Teacher referral",
-  parent_info: "Parent information",
-  ai_flag: "AI flag",
-  admin_report: "Admin report",
-  content_safety_escalation: "Content safety escalation",
-};
-
 function StatusChip({ status }: { status: string }) {
-  const open = status === "open" || status === "under_review" || status === "escalated";
   return (
     <span
       className={`inline-block rounded-full px-2 py-0.5 text-xs font-medium ${
-        open ? "bg-amber-100 text-amber-800" : "bg-slate-100 text-slate-600"
+        isOpenStatus(status) ? "bg-amber-100 text-amber-800" : "bg-slate-100 text-slate-600"
       }`}
     >
       {status.replace("_", " ")}
@@ -36,12 +29,16 @@ function StatusChip({ status }: { status: string }) {
   );
 }
 
+// Built from the shared constant, not user input — safe to inline.
+const OPEN_SET_SQL = OPEN_SAFEGUARDING_STATUSES.map((st) => `'${st}'`).join(",");
+
 export default async function SafeguardingCasesPage() {
+  await requireSafeguardingLead();
   const res = await getDb().execute(sql`
     select r.id, r.source, r.status, r.occurred_at, r.created_at, st.full_name, st.student_code
     from restricted.safeguarding_records r
     join core.students st on st.id = r.student_id
-    order by (r.status in ('open','under_review','escalated')) desc, r.created_at desc
+    order by (r.status in (${sql.raw(OPEN_SET_SQL)})) desc, r.created_at desc
     limit 200
   `);
   const cases = res.rows as unknown as CaseRow[];
@@ -73,7 +70,7 @@ export default async function SafeguardingCasesPage() {
                   <span className="font-medium">{c.full_name}</span>{" "}
                   <span className="text-xs text-slate-400">{c.student_code}</span>
                 </td>
-                <td className="py-2 pr-3">{SOURCE_LABELS[c.source] ?? c.source}</td>
+                <td className="py-2 pr-3">{sourceLabel(c.source)}</td>
                 <td className="py-2 pr-3 text-slate-500">
                   {new Date(c.occurred_at).toLocaleDateString()}
                 </td>

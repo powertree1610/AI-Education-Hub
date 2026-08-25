@@ -79,6 +79,8 @@ export async function runAgentTurn(opts: {
   user: AppUser;
   /** Kiosk: every MCP call is pinned to this student, whatever the model says. */
   pinnedStudentId?: string;
+  /** Kiosk: injected as session_ref on tools that take one (safeguarding flags). */
+  pinnedSessionRef?: string;
   /** Surface-specific local tools (e.g. the kiosk's log_activity). */
   customTools?: {
     has(name: string): boolean;
@@ -170,9 +172,14 @@ export async function runAgentTurn(opts: {
       opts.events.onToolStart(name);
       let result: { text: string; isError: boolean };
       try {
-        if (opts.pinnedStudentId && "student_id" in args) {
-          // The kiosk model never chooses the student.
+        if (opts.pinnedStudentId) {
+          // The kiosk model never chooses the student — inject even when the
+          // model omitted the key entirely (the kiosk prompt gives it no id
+          // to pass, and zod strips unknown keys on tools that don't take it).
           args.student_id = opts.pinnedStudentId;
+        }
+        if (opts.pinnedSessionRef) {
+          args.session_ref = opts.pinnedSessionRef;
         }
 
         if (opts.customTools?.has(name)) {

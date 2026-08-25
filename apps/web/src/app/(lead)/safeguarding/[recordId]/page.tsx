@@ -1,7 +1,10 @@
 import { notFound } from "next/navigation";
 import { sql } from "drizzle-orm";
+import { SAFEGUARDING_STATUSES } from "@platform/shared";
 import { addReviewAction, updateCaseStatusAction } from "@/actions/safeguarding";
 import { getDb } from "@/lib/db";
+import { requireSafeguardingLead } from "@/lib/guard";
+import { isUuid, sourceLabel } from "@/lib/safeguarding-labels";
 
 export const dynamic = "force-dynamic";
 
@@ -40,28 +43,38 @@ interface ReviewRow {
   reviewer_name: string;
 }
 
-const STATUSES = ["open", "under_review", "actioned", "closed", "escalated"] as const;
-
 export default async function SafeguardingCasePage({
   params,
 }: {
   params: Promise<{ recordId: string }>;
 }) {
+  await requireSafeguardingLead();
   const { recordId } = await params;
+  if (!isUuid(recordId)) notFound();
   const db = getDb();
 
-  const caseRes = await db.execute(sql`
-    select r.id, r.student_id, r.source, r.status, r.occurred_at, r.created_at,
-           r.factual_record, r.ai_flag_reason, r.ai_confidence, r.session_ref,
-           r.safety_event_id, st.full_name, st.student_code, cu.name as creator_name
-    from restricted.safeguarding_records r
-    join core.students st on st.id = r.student_id
-    left join core.users cu on cu.id = r.created_by
-    where r.id = ${recordId}
-    limit 1
-  `);
+  const [caseRes, reviewsRes] = await Promise.all([
+    db.execute(sql`
+      select r.id, r.student_id, r.source, r.status, r.occurred_at, r.created_at,
+             r.factual_record, r.ai_flag_reason, r.ai_confidence, r.session_ref,
+             r.safety_event_id, st.full_name, st.student_code, cu.name as creator_name
+      from restricted.safeguarding_records r
+      join core.students st on st.id = r.student_id
+      left join core.users cu on cu.id = r.created_by
+      where r.id = ${recordId}
+      limit 1
+    `),
+    db.execute(sql`
+      select v.id, v.decision, v.action_taken, v.follow_up, v.reviewed_at, u.name as reviewer_name
+      from restricted.safeguarding_reviews v
+      join core.users u on u.id = v.reviewed_by
+      where v.record_id = ${recordId}
+      order by v.reviewed_at desc
+    `),
+  ]);
   const record = caseRes.rows[0] as unknown as CaseDetail | undefined;
   if (!record) notFound();
+  const reviews = reviewsRes.rows as unknown as ReviewRow[];
 
   const eventRes = record.safety_event_id
     ? await db.execute(sql`
@@ -71,15 +84,6 @@ export default async function SafeguardingCasePage({
     : null;
   const event = (eventRes?.rows[0] ?? null) as LinkedEvent | null;
 
-  const reviewsRes = await db.execute(sql`
-    select v.id, v.decision, v.action_taken, v.follow_up, v.reviewed_at, u.name as reviewer_name
-    from restricted.safeguarding_reviews v
-    join core.users u on u.id = v.reviewed_by
-    where v.record_id = ${recordId}
-    order by v.reviewed_at desc
-  `);
-  const reviews = reviewsRes.rows as unknown as ReviewRow[];
-
   return (
     <div className="max-w-3xl space-y-6">
       <div>
@@ -87,7 +91,7 @@ export default async function SafeguardingCasePage({
           {record.full_name} <span className="text-sm font-normal text-slate-400">{record.student_code}</span>
         </h1>
         <p className="mt-1 text-sm text-slate-500">
-          {record.source.replace(/_/g, " ")} · occurred {new Date(record.occurred_at).toLocaleString()} ·
+          {sourceLabel(record.source)} · occurred {new Date(record.occurred_at).toLocaleString()} ·
           recorded {new Date(record.created_at).toLocaleString()}
           {record.creator_name ? ` by ${record.creator_name}` : ""}
         </p>
@@ -129,7 +133,7 @@ export default async function SafeguardingCasePage({
               defaultValue={record.status}
               className="rounded-md border border-slate-300 px-2 py-1 text-sm"
             >
-              {STATUSES.map((st) => (
+              {SAFEGUARDING_STATUSES.map((st) => (
                 <option key={st} value={st}>
                   {st.replace("_", " ")}
                 </option>
