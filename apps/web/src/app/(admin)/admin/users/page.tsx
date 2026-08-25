@@ -1,6 +1,11 @@
-import { asc } from "drizzle-orm";
+import { asc, eq } from "drizzle-orm";
 import { schema as s } from "@platform/db";
-import { createStaffUserAction, setPasswordAction, setUserActiveAction } from "@/actions/users";
+import {
+  createStaffUserAction,
+  setPasswordAction,
+  setUserActiveAction,
+  toggleSafeguardingLeadAction,
+} from "@/actions/users";
 import { getDb } from "@/lib/db";
 import { authMode } from "@/lib/env";
 
@@ -19,8 +24,10 @@ export default async function UsersPage() {
       role: s.users.role,
       isActive: s.users.isActive,
       hasPassword: s.users.passwordHash,
+      isLead: s.staffProfiles.isSafeguardingLead,
     })
     .from(s.users)
+    .leftJoin(s.staffProfiles, eq(s.staffProfiles.userId, s.users.id))
     .orderBy(asc(s.users.role), asc(s.users.name));
 
   return (
@@ -42,6 +49,7 @@ export default async function UsersPage() {
             <th className="px-4 py-2 font-medium">Email / username</th>
             <th className="px-4 py-2 font-medium">Role</th>
             <th className="px-4 py-2 font-medium">Password</th>
+            <th className="px-4 py-2 font-medium">Safeguarding</th>
             <th className="px-4 py-2 font-medium">Status</th>
             <th className="px-4 py-2" />
           </tr>
@@ -70,6 +78,24 @@ export default async function UsersPage() {
                     </button>
                     {u.hasPassword ? <span className="text-xs text-green-600">✓</span> : null}
                   </form>
+                )}
+              </td>
+              <td className="px-4 py-2">
+                {u.role === "teacher" || u.role === "admin" ? (
+                  <form action={toggleSafeguardingLeadAction} className="flex items-center gap-1">
+                    <input type="hidden" name="userId" value={u.id} />
+                    <input type="hidden" name="next" value={u.isLead ? "false" : "true"} />
+                    {u.isLead ? (
+                      <span className="rounded-full bg-teal-100 px-2 py-0.5 text-xs font-medium text-teal-800">
+                        lead
+                      </span>
+                    ) : null}
+                    <button type="submit" className="text-xs text-slate-500 hover:underline">
+                      {u.isLead ? "remove" : "make lead"}
+                    </button>
+                  </form>
+                ) : (
+                  <span className="text-xs text-slate-300">—</span>
                 )}
               </td>
               <td className="px-4 py-2">

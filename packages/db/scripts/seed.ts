@@ -99,6 +99,13 @@ async function main() {
     .values({ userId: teacherId, branchId, position: "Teacher" })
     .onConflictDoNothing({ target: s.staffProfiles.userId });
 
+  // Safeguarding lead: a senior staff account with the module flag (design §4).
+  const leadId = await ensureUser({ email: "lead@example.com", role: "teacher", name: "Safeguarding Lead" });
+  await db
+    .insert(s.staffProfiles)
+    .values({ userId: leadId, branchId, position: "Senior Teacher", isSafeguardingLead: true })
+    .onConflictDoUpdate({ target: s.staffProfiles.userId, set: { isSafeguardingLead: true } });
+
   const guardianUserId = await ensureUser({ email: "parent@example.com", role: "guardian", name: "Parent One" });
   await db
     .insert(s.guardians)

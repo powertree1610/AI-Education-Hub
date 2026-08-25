@@ -3,6 +3,7 @@ import { notFound, redirect } from "next/navigation";
 import { desc, eq } from "drizzle-orm";
 import { schema as s } from "@platform/db";
 import { canUserAccessStudent } from "@platform/shared";
+import { createReferralAction } from "@/actions/safeguarding";
 import { ResultsSection } from "@/components/results-section";
 import { requireRoleOrRedirect } from "@/lib/guard";
 import { getDb } from "@/lib/db";
@@ -13,11 +14,14 @@ export const dynamic = "force-dynamic";
  *  results, portfolio, intake history. */
 export default async function TeacherStudentPage({
   params,
+  searchParams,
 }: {
   params: Promise<{ id: string }>;
+  searchParams: Promise<{ referred?: string }>;
 }) {
   const user = await requireRoleOrRedirect("teacher", "admin");
   const { id } = await params;
+  const { referred } = await searchParams;
   const db = getDb();
 
   if (user.role === "teacher") {
@@ -266,6 +270,50 @@ export default async function TeacherStudentPage({
             <li className="px-4 py-2 text-slate-500">No forms submitted yet.</li>
           ) : null}
         </ul>
+      </section>
+
+      <section>
+        {referred === "1" && (
+          <p className="mb-2 rounded-md bg-teal-50 px-3 py-2 text-sm text-teal-800">
+            Safeguarding concern recorded. The safeguarding lead has been notified — you will not
+            see the case here.
+          </p>
+        )}
+        <details className="rounded-lg border border-slate-200 bg-white">
+          <summary className="cursor-pointer px-4 py-2 text-sm font-medium text-slate-600">
+            Raise safeguarding concern
+          </summary>
+          <form action={createReferralAction} className="space-y-2 border-t border-slate-100 p-4">
+            <input type="hidden" name="studentId" value={id} />
+            <p className="text-xs text-slate-500">
+              Record only what you saw or heard — facts, not interpretation. This goes directly to
+              the safeguarding lead; it is not visible to teachers, admins or parents.
+            </p>
+            <textarea
+              name="factualRecord"
+              required
+              minLength={10}
+              rows={3}
+              placeholder="What was said or seen, when, and by whom"
+              className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm"
+            />
+            <div className="flex items-center gap-2">
+              <label className="text-sm text-slate-500" htmlFor="occurredOn">
+                Occurred on
+              </label>
+              <input
+                id="occurredOn"
+                type="date"
+                name="occurredOn"
+                defaultValue={new Date().toISOString().slice(0, 10)}
+                className="rounded-md border border-slate-300 px-2 py-1 text-sm"
+              />
+              <button className="ml-auto rounded-md bg-teal-700 px-3 py-1.5 text-sm font-medium text-white hover:bg-teal-800">
+                Submit to safeguarding lead
+              </button>
+            </div>
+          </form>
+        </details>
       </section>
     </div>
   );
