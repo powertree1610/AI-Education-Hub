@@ -5,6 +5,7 @@ import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import { schema as s } from "@platform/db";
 import { CONSENT_TYPES, writeAudit, type ConsentType } from "@platform/shared";
+import { schoolIdByName } from "@/actions/schools";
 import { requireAppUser } from "@/lib/auth";
 import { getDb } from "@/lib/db";
 
@@ -39,6 +40,13 @@ export async function createStudentAction(formData: FormData) {
   const guardianName = str(formData, "guardianName");
   const grantedTypes = CONSENT_TYPES.filter((t) => formData.get(`consent_${t}`) === "on");
 
+  // Schools master (v5): pick from the list or create by name; the legacy
+  // free-text school_name column is no longer written for new students.
+  const newSchoolName = str(formData, "newSchoolName");
+  const schoolId = newSchoolName
+    ? await schoolIdByName(newSchoolName)
+    : str(formData, "schoolId") || null;
+
   const studentId = await db.transaction(async (tx) => {
     const [student] = await tx
       .insert(s.students)
@@ -50,7 +58,7 @@ export async function createStudentAction(formData: FormData) {
         dob,
         gender: str(formData, "gender") || null,
         programme: str(formData, "programme") || null,
-        schoolName: str(formData, "schoolName") || null,
+        schoolId,
         schoolGrade: str(formData, "schoolGrade") || null,
         preferredAiLanguage: str(formData, "preferredAiLanguage") || null,
       })

@@ -35,6 +35,10 @@ export default async function StudentDetailPage({
           .limit(1)
       )[0]
     : undefined;
+  // School from the master table; legacy rows fall back to the old free text.
+  const school = student?.schoolId
+    ? (await db.select({ name: s.schools.name }).from(s.schools).where(eq(s.schools.id, student.schoolId)).limit(1))[0]
+    : undefined;
   if (!student) notFound();
 
   const guardians = await db
@@ -129,7 +133,8 @@ export default async function StudentDetailPage({
           <div>
             <dt className="text-slate-500">School</dt>
             <dd>
-              {student.schoolName ?? "—"} {student.schoolGrade ? `(${student.schoolGrade})` : ""}
+              {school?.name ?? student.schoolName ?? "—"}{" "}
+              {student.schoolGrade ? `(${student.schoolGrade})` : ""}
             </dd>
           </div>
           <div>
