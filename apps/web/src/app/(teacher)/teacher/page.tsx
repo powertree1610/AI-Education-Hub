@@ -71,23 +71,42 @@ export default async function TeacherHome() {
     goalReviewsDue = gd?.n ?? 0;
   }
 
-  const stat = (value: number, label: string, href: string, warn = false) => (
-    <Link
-      href={href}
-      className={`rounded-lg border bg-white p-4 ${warn && value > 0 ? "border-amber-300" : "border-slate-200"}`}
-    >
-      <div className={`text-2xl font-semibold ${warn && value > 0 ? "text-amber-600" : ""}`}>{value}</div>
-      <div className="mt-1 text-sm text-slate-500">{label}</div>
-    </Link>
-  );
+  const stat = (value: number, label: string, icon: string, href: string, warn = false) => {
+    const hot = warn && value > 0;
+    return (
+      <Link
+        href={href}
+        className={`group flex items-start gap-3 rounded-xl border bg-white p-4 shadow-sm transition hover:-translate-y-0.5 hover:shadow-md ${
+          hot ? "border-amber-300 bg-amber-50/50" : "border-slate-200"
+        }`}
+      >
+        <span
+          className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-lg text-lg ${
+            hot ? "bg-amber-100" : "bg-teal-50"
+          }`}
+        >
+          {icon}
+        </span>
+        <span>
+          <span className={`block text-2xl font-semibold leading-tight ${hot ? "text-amber-700" : "text-slate-800"}`}>
+            {value}
+          </span>
+          <span className="mt-0.5 block text-sm text-slate-500">
+            {label}
+            <span className="ml-1 text-teal-700 opacity-0 transition group-hover:opacity-100">→</span>
+          </span>
+        </span>
+      </Link>
+    );
+  };
 
   return (
     <div>
       <div className="mb-6 grid grid-cols-2 gap-4 md:grid-cols-4">
-        {stat(students.length, "My students", "/teacher")}
-        {stat(pendingReviews, "Pending AI reviews", "/teacher/review", true)}
-        {stat(sessionsThisWeek, "Sessions this week", "/teacher/sessions")}
-        {stat(goalReviewsDue, "Goal reviews due (7d)", "/teacher", true)}
+        {stat(students.length, "My students", "🎓", "/teacher")}
+        {stat(pendingReviews, "Pending AI reviews", "🔍", "/teacher/review", true)}
+        {stat(sessionsThisWeek, "Sessions this week", "💬", "/teacher/sessions")}
+        {stat(goalReviewsDue, "Goal reviews due (7d)", "⭐", "/teacher", true)}
       </div>
       <h1 className="text-xl font-semibold">My Students</h1>
       {students.length === 0 ? (

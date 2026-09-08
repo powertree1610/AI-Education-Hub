@@ -9,11 +9,51 @@ async function scalar(query: ReturnType<typeof sql>): Promise<number> {
   return Number((res.rows[0] as { n: string | number }).n);
 }
 
-function StatCard({ label, value, warn, href }: { label: string; value: string | number; warn?: boolean; href?: string }) {
+function StatCard({
+  label,
+  value,
+  icon,
+  warn,
+  href,
+  hint,
+}: {
+  label: string;
+  value: string | number;
+  icon: string;
+  warn?: boolean;
+  href?: string;
+  hint?: string;
+}) {
+  const ok = !warn;
   const inner = (
-    <div className={`rounded-lg border bg-white p-4 ${warn ? "border-amber-300" : "border-slate-200"}`}>
-      <div className={`text-2xl font-semibold ${warn ? "text-amber-600" : ""}`}>{value}</div>
-      <div className="mt-1 text-sm text-slate-500">{label}</div>
+    <div
+      className={`group flex h-full items-start gap-3 rounded-xl border bg-white p-4 shadow-sm transition ${
+        warn
+          ? "border-amber-300 bg-amber-50/50"
+          : "border-slate-200"
+      } ${href ? "hover:-translate-y-0.5 hover:shadow-md" : ""}`}
+    >
+      <span
+        className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-lg text-lg ${
+          warn ? "bg-amber-100" : "bg-teal-50"
+        }`}
+      >
+        {icon}
+      </span>
+      <span className="min-w-0">
+        <span className={`block text-2xl font-semibold leading-tight ${warn ? "text-amber-700" : "text-slate-800"}`}>
+          {value}
+          {ok && typeof value === "number" && value === 0 && hint ? (
+            <span className="ml-2 align-middle text-xs font-normal text-teal-700">{hint}</span>
+          ) : null}
+        </span>
+        <span className="mt-0.5 block text-sm text-slate-500">
+          {label}
+          {href ? (
+            <span className="ml-1 text-teal-700 opacity-0 transition group-hover:opacity-100">→</span>
+          ) : null}
+        </span>
+      </span>
     </div>
   );
   return href ? <Link href={href}>{inner}</Link> : inner;
@@ -56,47 +96,103 @@ export default async function AdminDashboard() {
     select count(*)::int as n from core.safety_events where reviewed_at is null
   `);
 
+  // All-time totals are the headline; this month rides along for context.
   const usage = await getDb().execute(sql`
     select coalesce(sum(total_tokens),0)::bigint as tokens,
-           coalesce(sum(estimated_cost),0)::numeric(12,4) as cost
+           coalesce(sum(estimated_cost),0)::numeric(12,4) as cost,
+           coalesce(sum(total_tokens) filter (where created_at >= date_trunc('month', now())),0)::bigint as month_tokens,
+           coalesce(sum(estimated_cost) filter (where created_at >= date_trunc('month', now())),0)::numeric(12,4) as month_cost,
+           min(created_at) as since
     from core.ai_usage_logs
-    where created_at >= date_trunc('month', now())
   `);
-  const monthTokens = Number((usage.rows[0] as { tokens: string }).tokens);
-  const monthCost = Number((usage.rows[0] as { cost: string }).cost);
+  const u = usage.rows[0] as {
+    tokens: string;
+    cost: string;
+    month_tokens: string;
+    month_cost: string;
+    since: string | null;
+  };
+  const totalTokens = Number(u.tokens);
+  const totalCost = Number(u.cost);
+  const monthTokens = Number(u.month_tokens);
+  const monthCost = Number(u.month_cost);
 
   const usageByType = await getDb().execute(sql`
     select usage_type as name, count(*)::int as calls, sum(total_tokens)::bigint as tokens,
            sum(estimated_cost)::numeric(12,4) as cost
     from core.ai_usage_logs
-    where created_at >= date_trunc('month', now())
     group by usage_type order by sum(total_tokens) desc
   `);
   const usageByModel = await getDb().execute(sql`
     select model as name, count(*)::int as calls, sum(total_tokens)::bigint as tokens,
            sum(estimated_cost)::numeric(12,4) as cost
     from core.ai_usage_logs
-    where created_at >= date_trunc('month', now())
     group by model order by sum(total_tokens) desc
   `);
 
   return (
-    <div className="max-w-4xl space-y-8">
-      <h1 className="text-xl font-semibold">Dashboard</h1>
+    <div className="max-w-4xl space-y-10">
+      <div>
+        <h1 className="text-xl font-semibold">Dashboard</h1>
+        <p className="mt-1 text-sm text-slate-500">
+          Collection health at a glance — amber cards need someone&apos;s attention.
+        </p>
+      </div>
 
       <div className="grid grid-cols-2 gap-4 md:grid-cols-3">
-        <StatCard label="Active students" value={activeStudents} href="/admin/students" />
-        <StatCard label="Students with consent gaps" value={consentGaps} warn={consentGaps > 0} />
-        <StatCard label="Missing teacher baseline" value={missingBaseline} warn={missingBaseline > 0} />
-        <StatCard label="Portfolio below 3 items" value={thinPortfolio} warn={thinPortfolio > 0} />
-        <StatCard label="Pending AI reviews" value={pendingReviews} href="/teacher/review" warn={pendingReviews > 0} />
-        <StatCard label="Unreviewed safety events" value={unreviewedSafety} href="/admin/safety" warn={unreviewedSafety > 0} />
+        <StatCard icon="🎓" label="Active students" value={activeStudents} href="/admin/students" />
+        <StatCard
+          icon="📋"
+          label="Students with consent gaps"
+          value={consentGaps}
+          warn={consentGaps > 0}
+          href="/admin/students"
+          hint="all clear"
+        />
+        <StatCard
+          icon="📝"
+          label="Missing teacher baseline"
+          value={missingBaseline}
+          warn={missingBaseline > 0}
+          href="/admin/students"
+          hint="all clear"
+        />
+        <StatCard
+          icon="🗂️"
+          label="Portfolio below 3 items"
+          value={thinPortfolio}
+          warn={thinPortfolio > 0}
+          href="/admin/students"
+          hint="all clear"
+        />
+        <StatCard
+          icon="🔍"
+          label="Pending AI reviews"
+          value={pendingReviews}
+          href="/teacher/review"
+          warn={pendingReviews > 0}
+          hint="queue empty"
+        />
+        <StatCard
+          icon="🛡️"
+          label="Unreviewed safety events"
+          value={unreviewedSafety}
+          href="/admin/safety"
+          warn={unreviewedSafety > 0}
+          hint="all reviewed"
+        />
       </div>
 
       <section>
-        <h2 className="font-medium">
-          AI usage this month — {fmtTokens(monthTokens)} tokens · ${monthCost.toFixed(2)}
-        </h2>
+        <div className="flex flex-wrap items-baseline justify-between gap-2">
+          <h2 className="font-medium">
+            AI usage — all time: {fmtTokens(totalTokens)} tokens · ${totalCost.toFixed(2)}
+          </h2>
+          <span className="text-xs text-slate-400">
+            this month: {fmtTokens(monthTokens)} tokens · ${monthCost.toFixed(2)}
+            {u.since ? ` · tracking since ${new Date(u.since).toLocaleDateString()}` : ""}
+          </span>
+        </div>
         <div className="mt-3 grid gap-4 md:grid-cols-2">
           <UsageMeterList title="Usage by model" rows={usageByModel.rows as unknown as UsageRow[]} />
           <UsageMeterList title="Usage by feature" rows={usageByType.rows as unknown as UsageRow[]} />
@@ -118,6 +214,7 @@ interface UsageRow {
 }
 
 function fmtTokens(n: number): string {
+  if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(2)}M`;
   return n >= 1000 ? `${(n / 1000).toFixed(1)}k` : String(n);
 }
 
@@ -126,10 +223,10 @@ function fmtTokens(n: number): string {
 function UsageMeterList({ title, rows }: { title: string; rows: UsageRow[] }) {
   const max = Math.max(1, ...rows.map((r) => Number(r.tokens)));
   return (
-    <div className="rounded-lg border border-slate-200 bg-white p-4">
+    <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
       <h3 className="text-sm font-medium text-slate-600">{title}</h3>
       {rows.length === 0 ? (
-        <p className="mt-2 text-sm text-slate-400">No usage this month.</p>
+        <p className="mt-2 text-sm text-slate-400">No usage recorded yet.</p>
       ) : (
         <ul className="mt-3 space-y-3">
           {rows.map((row) => {
@@ -137,11 +234,11 @@ function UsageMeterList({ title, rows }: { title: string; rows: UsageRow[] }) {
             return (
               <li key={row.name}>
                 <div className="flex items-baseline justify-between gap-3 text-sm">
-                  <span className="font-medium">{row.name}</span>
+                  <span className="truncate font-medium">{row.name}</span>
                   <span className="whitespace-nowrap text-xs text-slate-400">
                     {row.calls} request{row.calls === 1 ? "" : "s"}
                   </span>
-                  <span className="w-20 text-right">
+                  <span className="w-20 shrink-0 text-right">
                     <span className="block font-semibold leading-tight">{fmtTokens(tokens)}</span>
                     <span className="block text-xs leading-tight text-slate-400">
                       ${Number(row.cost).toFixed(4)}
