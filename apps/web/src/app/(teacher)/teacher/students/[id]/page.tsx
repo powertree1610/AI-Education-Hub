@@ -193,6 +193,12 @@ export default async function TeacherStudentPage({
         </div>
         <div className="flex gap-2 text-sm">
           <Link
+            href={`/teacher/students/${id}/timeline`}
+            className="rounded-md border border-slate-300 px-3 py-1.5 hover:bg-slate-50"
+          >
+            Timeline
+          </Link>
+          <Link
             href={`/teacher/students/${id}/baseline`}
             className="rounded-md border border-slate-300 px-3 py-1.5 hover:bg-slate-50"
           >

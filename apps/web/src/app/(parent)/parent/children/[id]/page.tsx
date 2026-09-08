@@ -7,6 +7,7 @@ import { startParentChatAction } from "@/actions/parent-chat";
 import { parentProposeGoalAction, parentSetConsentAction } from "@/actions/parents";
 import { uploadWorkSampleAction } from "@/actions/uploads";
 import { CONSENT_LABELS } from "@/lib/consent-labels";
+import { buildTimeline } from "@/lib/timeline";
 import { requireRoleOrRedirect } from "@/lib/guard";
 import { getDb } from "@/lib/db";
 import { isChildOfGuardianUser } from "@/lib/parents";
@@ -119,6 +120,10 @@ export default async function ParentChildPage({
 
   const consents = await getCurrentConsents(db, id);
 
+  // Development timeline (v7) — parent view: only what this portal already
+  // shows elsewhere (levels, goals, results, reports, work).
+  const timeline = (await buildTimeline(db, id, "parent")).slice(0, 15);
+
   return (
     <div className="max-w-3xl space-y-10">
       <div className="flex items-start justify-between">
@@ -135,6 +140,27 @@ export default async function ParentChildPage({
           </button>
         </form>
       </div>
+
+      <section>
+        <h2 className="font-medium">Development timeline</h2>
+        {timeline.length === 0 ? (
+          <p className="mt-2 text-sm text-slate-500">Nothing recorded yet.</p>
+        ) : (
+          <ol className="mt-2 divide-y divide-slate-100 rounded-lg border border-slate-200 bg-white text-sm">
+            {timeline.map((e, i) => (
+              <li key={i} className="flex items-start justify-between gap-3 px-4 py-2">
+                <span>
+                  {e.title}
+                  {e.detail ? <span className="block text-xs text-slate-500">{e.detail}</span> : null}
+                </span>
+                <span className="shrink-0 text-xs text-slate-400">
+                  {new Date(e.at).toLocaleDateString()}
+                </span>
+              </li>
+            ))}
+          </ol>
+        )}
+      </section>
 
       <section>
         <h2 className="font-medium">Progress reports</h2>
