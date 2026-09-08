@@ -1,11 +1,12 @@
 import "server-only";
 import { eq } from "drizzle-orm";
 import { schema as s } from "@platform/db";
-import { canUserAccessStudent, parseLocalUrl } from "@platform/shared";
+import { canUserAccessStudent, checkConsent, parseLocalUrl } from "@platform/shared";
 import type { AppUser } from "@/lib/auth";
 import { getDb } from "@/lib/db";
 import { getStorage } from "@/lib/storage";
 import type { OpenAiTool } from "./central-api";
+import { extractAndStoreSampleText } from "./extract-sample-text";
 import { ocrImage, ocrPdf } from "./ocr";
 
 /**
@@ -77,6 +78,56 @@ async function readWorkSampleFile(
     }
   }
 
+  // Consent gate (v5 retrofit): same posture as the MCP analysis tools.
+  const { granted, missing } = await checkConsent(db, sample.studentId, [
+    "work_uploads",
+    "ai_work_analysis",
+  ]);
+  if (!granted) {
+    return {
+      text: JSON.stringify({ code: "CONSENT_NOT_GRANTED", missing }),
+      isError: true,
+    };
+  }
+
+  // v5: cached extraction first (written at upload); no re-billing.
+  const cached = (
+    await db
+      .select({ extractedText: s.workSampleTexts.extractedText })
+      .from(s.workSampleTexts)
+      .where(eq(s.workSampleTexts.workSampleId, workSampleId))
+      .limit(1)
+  )[0];
+  if (cached) {
+    return {
+      text: JSON.stringify({
+        work_sample_id: workSampleId,
+        title_topic: sample.titleTopic,
+        work_type: sample.workType,
+        extracted_content: cached.extractedText,
+        cached: true,
+      }),
+      isError: false,
+    };
+  }
+
+  // Write-through backfill for pre-v5 samples: extract + persist, so the
+  // next read is free.
+  const stored = await extractAndStoreSampleText(workSampleId, user.id);
+  if (stored) {
+    return {
+      text: JSON.stringify({
+        work_sample_id: workSampleId,
+        title_topic: sample.titleTopic,
+        work_type: sample.workType,
+        extracted_content: stored,
+        cached: false,
+      }),
+      isError: false,
+    };
+  }
+
+  // Last resort: live OCR without persistence (unchanged pre-v5 behaviour).
   const key = parseLocalUrl(sample.fileUrl);
   if (!key) return { text: JSON.stringify({ error: "Unsupported file URL scheme" }), isError: true };
   const file = await getStorage().get(key);
