@@ -9,25 +9,37 @@ import type { ChatMessage, OpenAiTool } from "@/lib/ai/central-api";
 import { KIOSK_LOCAL_TOOLS, callKioskLocalTool, isKioskLocalTool } from "@/lib/ai/kiosk-tools";
 import { resolveChatModel } from "@/lib/ai/license";
 import { listMcpToolsAsOpenAi } from "@/lib/ai/mcp-client";
-import { dailyCompanionPrompt, guidedLearningPrompt } from "@/lib/ai/prompts";
+import {
+  dailyCompanionPrompt,
+  guidedLearningPrompt,
+  parentSupportPrompt,
+  type MaterialContext,
+} from "@/lib/ai/prompts";
 import { SSE_HEADERS, sseEncode, sseOnce } from "@/lib/ai/sse";
 import { logUsage } from "@/lib/ai/usage-log";
 import { currentAppUser } from "@/lib/auth";
 import { getDb } from "@/lib/db";
 import { kioskHistory } from "@/lib/kiosk-state";
+import { isChildOfGuardianUser } from "@/lib/parents";
 import { finalizeSession } from "@/lib/session-lifecycle";
 import { studentForUser } from "@/lib/student";
 
 /**
- * Shared child-facing chat handler behind BOTH surfaces:
+ * Shared chat handler behind ALL THREE session surfaces:
  *  - "kiosk":  School Mode — teacher-started session, teacher's login.
  *  - "student": Home Mode — the student's own account and session.
- * The safety layer (input gate, post-stream output check, covert tools,
- * escalation) is identical for both by construction.
+ *  - "parent": a guardian asking about their own child (v6).
+ * The safety layer (input classification, post-stream output check, covert
+ * tools, escalation) is identical for all by construction — with ONE
+ * surface-specific difference: a parent is an adult, so their messages are
+ * classified and recorded (a disclosed risk still escalates to the lead)
+ * but never deflected or blocked.
  */
 
 /** MCP subset per session kind. Academic = the read tools + safeguarding;
- *  Daily = a companion chat that needs NO academic data at all. */
+ *  Daily = a companion chat that needs NO academic data at all; Parent =
+ *  the teacher-approved profile + goals, never session history (child
+ *  conversation privacy — a v7 rights decision). */
 const ACADEMIC_MCP_TOOLS = new Set([
   "get_student_learning_profile",
   "get_goals",
@@ -35,13 +47,20 @@ const ACADEMIC_MCP_TOOLS = new Set([
   "flag_safeguarding_concern",
 ]);
 const DAILY_MCP_TOOLS = new Set(["flag_safeguarding_concern"]);
+const PARENT_MCP_TOOLS = new Set([
+  "get_student_learning_profile",
+  "get_goals",
+  "flag_safeguarding_concern",
+]);
 
-/** Tools the child must never see happening — their tool_start/tool_end
- *  events are suppressed server-side so nothing reaches the UI. */
+/** Tools the person chatting must never see happening — their
+ *  tool_start/tool_end events are suppressed server-side. */
 const COVERT_TOOLS = new Set(["flag_safeguarding_concern"]);
 
 /** Child input cap — classification always covers the full text. */
 const MESSAGE_MAX_CHARS = 2000;
+/** Parents are adults writing longer questions. */
+const PARENT_MESSAGE_MAX_CHARS = 4000;
 
 /** Allowed-hours are interpreted in the centre's timezone (PM decision). */
 const CENTRE_TIMEZONE = "Asia/Kuala_Lumpur";
@@ -58,7 +77,7 @@ function centreTimeHHMMSS(now = new Date()): string {
 
 export async function handleSessionChat(
   req: NextRequest,
-  surface: "kiosk" | "student",
+  surface: "kiosk" | "student" | "parent",
 ): Promise<Response> {
   const user = await currentAppUser();
   if (!user) return Response.json({ error: "Forbidden" }, { status: 403 });
@@ -66,6 +85,9 @@ export async function handleSessionChat(
     return Response.json({ error: "Forbidden" }, { status: 403 });
   }
   if (surface === "student" && user.role !== "student") {
+    return Response.json({ error: "Forbidden" }, { status: 403 });
+  }
+  if (surface === "parent" && user.role !== "guardian") {
     return Response.json({ error: "Forbidden" }, { status: 403 });
   }
 
@@ -84,6 +106,12 @@ export async function handleSessionChat(
   )[0];
   if (!session) return Response.json({ error: "Active session not found" }, { status: 404 });
 
+  // A parent session is served ONLY by the parent surface, and vice versa —
+  // child surfaces must never touch a parent conversation.
+  if ((session.sessionKind === "parent") !== (surface === "parent")) {
+    return Response.json({ error: "Forbidden" }, { status: 403 });
+  }
+
   // Authorization per surface.
   if (surface === "kiosk" && user.role === "teacher") {
     const allowed = await canUserAccessStudent(db, {
@@ -96,6 +124,12 @@ export async function handleSessionChat(
   if (surface === "student") {
     const ownStudent = await studentForUser(user.id);
     if (!ownStudent || session.startedBy !== user.id || session.studentId !== ownStudent.id) {
+      return Response.json({ error: "Forbidden" }, { status: 403 });
+    }
+  }
+  if (surface === "parent") {
+    const { ok } = await isChildOfGuardianUser(db, user.id, session.studentId);
+    if (!ok || session.startedBy !== user.id) {
       return Response.json({ error: "Forbidden" }, { status: 403 });
     }
   }
@@ -145,8 +179,13 @@ export async function handleSessionChat(
   const mcpToolsPromise = listMcpToolsAsOpenAi();
   mcpToolsPromise.catch(() => {});
 
-  // Safety gate (M9): classify the child's message BEFORE the agent sees it.
-  const trimmed = message.trim().slice(0, MESSAGE_MAX_CHARS);
+  // Safety gate (M9): classify the message BEFORE the agent sees it. On the
+  // parent surface the event still records (and a disclosed risk escalates
+  // to the safeguarding lead) but an adult is never deflected — the model
+  // should answer supportively instead.
+  const trimmed = message
+    .trim()
+    .slice(0, surface === "parent" ? PARENT_MESSAGE_MAX_CHARS : MESSAGE_MAX_CHARS);
   const inputVerdict = await classifyContent({
     surface: "chat_input",
     text: trimmed,
@@ -166,7 +205,7 @@ export async function handleSessionChat(
       classifierModel: model,
       text: trimmed,
     });
-    if (decision.action !== "allowed") {
+    if (decision.action !== "allowed" && surface !== "parent") {
       const deflection = deflectionMessage(student.preferredAiLanguage, session.supervisionMode);
       const gatedHistory = kioskHistory(sessionId);
       gatedHistory.push({ role: "user", content: "[message withheld by safety filter]" });
@@ -175,7 +214,12 @@ export async function handleSessionChat(
     }
   }
 
-  const allowedMcp = session.sessionKind === "daily" ? DAILY_MCP_TOOLS : ACADEMIC_MCP_TOOLS;
+  const allowedMcp =
+    session.sessionKind === "parent"
+      ? PARENT_MCP_TOOLS
+      : session.sessionKind === "daily"
+        ? DAILY_MCP_TOOLS
+        : ACADEMIC_MCP_TOOLS;
   let mcpTools: OpenAiTool[];
   try {
     mcpTools = (await mcpToolsPromise).filter((t) => allowedMcp.has(t.function.name));
@@ -185,7 +229,32 @@ export async function handleSessionChat(
       { status: 502 },
     );
   }
-  const tools = [...mcpTools, ...KIOSK_LOCAL_TOOLS];
+  // Local tools (log_activity, read_work_sample_file) are child-session
+  // machinery — the parent surface gets MCP reads only.
+  const tools = surface === "parent" ? mcpTools : [...mcpTools, ...KIOSK_LOCAL_TOOLS];
+
+  // Learning Workspace (v6): a Learn session anchored to a teacher-set
+  // material gets the actual task (cached OCR text) in its context.
+  let material: MaterialContext | null = null;
+  if (session.sessionKind === "academic" && session.materialId) {
+    const rows = await db
+      .select({
+        title: s.teachingMaterials.title,
+        instructions: s.teachingMaterials.instructions,
+        dueDate: s.teachingMaterials.dueDate,
+        subjectName: s.subjects.name,
+        extractedText: s.teachingMaterialTexts.extractedText,
+      })
+      .from(s.teachingMaterials)
+      .leftJoin(s.subjects, eq(s.subjects.id, s.teachingMaterials.subjectId))
+      .leftJoin(
+        s.teachingMaterialTexts,
+        eq(s.teachingMaterialTexts.materialId, s.teachingMaterials.id),
+      )
+      .where(eq(s.teachingMaterials.id, session.materialId))
+      .limit(1);
+    material = rows[0] ?? null;
+  }
 
   const promptArgs = {
     preferredName: student.preferredName ?? student.fullName,
@@ -196,9 +265,16 @@ export async function handleSessionChat(
     supervisionMode: session.supervisionMode,
   };
   const systemPrompt =
-    session.sessionKind === "daily"
-      ? dailyCompanionPrompt(promptArgs)
-      : guidedLearningPrompt({ ...promptArgs, assistMode: session.assistMode });
+    session.sessionKind === "parent"
+      ? parentSupportPrompt({
+          parentName: user.name,
+          childPreferredName: student.preferredName ?? student.fullName,
+          childAge: age,
+          childSchoolGrade: student.schoolGrade,
+        })
+      : session.sessionKind === "daily"
+        ? dailyCompanionPrompt(promptArgs)
+        : guidedLearningPrompt({ ...promptArgs, assistMode: session.assistMode, material });
 
   const history = kioskHistory(sessionId);
   const userMessage: ChatMessage = { role: "user", content: trimmed };
@@ -272,7 +348,8 @@ export async function handleSessionChat(
 
         // One aggregated usage row per turn.
         await logUsage(model, result.usage, {
-          feature: surface === "kiosk" ? "kiosk_chat" : "student_chat",
+          feature:
+            surface === "kiosk" ? "kiosk_chat" : surface === "parent" ? "parent_chat" : "student_chat",
           userId: user.id,
           studentId: session.studentId,
           refId: sessionId,

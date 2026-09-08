@@ -1,5 +1,5 @@
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
-import { desc, eq, inArray } from "drizzle-orm";
+import { and, desc, eq, inArray, ne } from "drizzle-orm";
 import { z } from "zod";
 import { schema as s } from "@platform/db";
 import { STUDENT_REF, defineTool } from "../define-tool.js";
@@ -16,6 +16,9 @@ export function registerSessionTools(server: McpServer): void {
     },
     consent: ["ai_interaction"],
     handler: async (input, { db, consents, studentId }) => {
+      // Parent chats (session_kind 'parent', v6) are the guardian's own
+      // conversation ABOUT the child — they are never part of the child's
+      // session history and must not reach any chat surface through here.
       const sessions = await db
         .select({
           session_id: s.aiSessions.id,
@@ -23,9 +26,10 @@ export function registerSessionTools(server: McpServer): void {
           ended_at: s.aiSessions.endedAt,
           status: s.aiSessions.status,
           supervision_mode: s.aiSessions.supervisionMode,
+          session_kind: s.aiSessions.sessionKind,
         })
         .from(s.aiSessions)
-        .where(eq(s.aiSessions.studentId, studentId))
+        .where(and(eq(s.aiSessions.studentId, studentId), ne(s.aiSessions.sessionKind, "parent")))
         .orderBy(desc(s.aiSessions.startedAt))
         .limit(input.limit);
 

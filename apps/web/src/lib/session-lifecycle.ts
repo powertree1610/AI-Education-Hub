@@ -21,6 +21,19 @@ export async function finalizeSession(args: {
   const db = getDb();
   const { session } = args;
 
+  // Parent chats (v6) end like any session but are deliberately NOT
+  // persisted as transcripts and NOT fed to the observation pass — both are
+  // child-evidence pipelines, and retention of parent conversations is a v7
+  // privacy-framework decision.
+  const kind =
+    (
+      await db
+        .select({ sessionKind: s.aiSessions.sessionKind })
+        .from(s.aiSessions)
+        .where(eq(s.aiSessions.id, session.id))
+        .limit(1)
+    )[0]?.sessionKind ?? "academic";
+
   await db
     .update(s.aiSessions)
     .set({ endedAt: new Date().toISOString(), status: "ended", endedReason: args.endedReason.slice(0, 50) })
@@ -38,7 +51,7 @@ export async function finalizeSession(args: {
   // Transcript persists ONLY when conversation_storage is granted at end time.
   const { granted } = await checkConsent(db, session.studentId, ["conversation_storage"]);
   const history = kioskHistory(session.id);
-  if (granted && history.length > 0) {
+  if (kind !== "parent" && granted && history.length > 0) {
     const messages: TranscriptMessage[] = history
       .filter((m) => (m.role === "user" || m.role === "assistant") && typeof m.content === "string")
       .map((m) => ({
@@ -62,7 +75,7 @@ export async function finalizeSession(args: {
 
   // Per-session observation pass (design §9): capture the evidence BEFORE
   // clearing the running context; runs after the response.
-  if (history.length > 0) {
+  if (kind !== "parent" && history.length > 0) {
     const transcriptText = history
       .filter((m) => (m.role === "user" || m.role === "assistant") && typeof m.content === "string")
       .map((m) => `${m.role === "user" ? "student" : "tutor"}: ${m.content as string}`)
