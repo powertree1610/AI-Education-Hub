@@ -1,14 +1,19 @@
 import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
-import { desc, eq, inArray } from "drizzle-orm";
+import { countDistinct, desc, eq, inArray, sum } from "drizzle-orm";
 import { schema as s } from "@platform/db";
-import { canUserAccessStudent } from "@platform/shared";
+import { canUserAccessStudent, parseLocalUrl } from "@platform/shared";
 import {
   activateGoalAction,
   addGoalUpdateAction,
   declineGoalAction,
   setGoalStatusAction,
 } from "@/actions/goals";
+import {
+  createTeachingMaterialAction,
+  proposeGoalFromMaterialAction,
+  setMaterialActiveAction,
+} from "@/actions/materials";
 import { createReferralAction } from "@/actions/safeguarding";
 import { ResultsSection } from "@/components/results-section";
 import { requireRoleOrRedirect } from "@/lib/guard";
@@ -97,6 +102,58 @@ export default async function TeacherStudentPage({
     : [];
   const latestUpdate = new Map<string, (typeof updates)[number]>();
   for (const u of updates) if (!latestUpdate.has(u.goalId)) latestUpdate.set(u.goalId, u);
+
+  const materials = await db
+    .select({
+      id: s.teachingMaterials.id,
+      title: s.teachingMaterials.title,
+      instructions: s.teachingMaterials.instructions,
+      fileUrl: s.teachingMaterials.fileUrl,
+      dueDate: s.teachingMaterials.dueDate,
+      isActive: s.teachingMaterials.isActive,
+      createdAt: s.teachingMaterials.createdAt,
+      subjectName: s.subjects.name,
+    })
+    .from(s.teachingMaterials)
+    .leftJoin(s.subjects, eq(s.subjects.id, s.teachingMaterials.subjectId))
+    .where(eq(s.teachingMaterials.studentId, id))
+    .orderBy(desc(s.teachingMaterials.createdAt));
+
+  // Workspace insight: Learn sessions per material + the hint telemetry the
+  // Socratic prompts log through log_activity.
+  const materialIds = materials.map((m) => m.id);
+  const materialStats = new Map<
+    string,
+    { sessions: number; hintsUsed: number; attempted: number; correct: number }
+  >();
+  if (materialIds.length > 0) {
+    const rows = await db
+      .select({
+        materialId: s.aiSessions.materialId,
+        sessions: countDistinct(s.aiSessions.id),
+        hintsUsed: sum(s.sessionActivities.hintsUsed),
+        attempted: sum(s.sessionActivities.attempted),
+        correct: sum(s.sessionActivities.correct),
+      })
+      .from(s.aiSessions)
+      .leftJoin(s.sessionActivities, eq(s.sessionActivities.sessionId, s.aiSessions.id))
+      .where(inArray(s.aiSessions.materialId, materialIds))
+      .groupBy(s.aiSessions.materialId);
+    for (const r of rows) {
+      if (r.materialId) {
+        materialStats.set(r.materialId, {
+          sessions: r.sessions,
+          hintsUsed: Number(r.hintsUsed ?? 0),
+          attempted: Number(r.attempted ?? 0),
+          correct: Number(r.correct ?? 0),
+        });
+      }
+    }
+  }
+
+  const subjects = await db.select().from(s.subjects).orderBy(s.subjects.name);
+
+  const materialTitle = new Map(materials.map((m) => [m.id, m.title]));
 
   const samples = await db
     .select({
@@ -239,6 +296,9 @@ export default async function TeacherStudentPage({
                       <span className="text-xs text-slate-400">
                         · {g.goalType} · asked by {g.requestedByRole}
                         {g.targetDate ? ` · target ${g.targetDate}` : ""}
+                        {g.materialId && materialTitle.has(g.materialId)
+                          ? ` · from “${materialTitle.get(g.materialId)}”`
+                          : ""}
                       </span>
                     </span>
                     <span
@@ -335,6 +395,127 @@ export default async function TeacherStudentPage({
             })}
           </ul>
         )}
+      </section>
+
+      <section>
+        <h2 className="font-medium">Teaching materials</h2>
+        <p className="mt-1 text-xs text-slate-500">
+          Tasks you set for this student. Active materials appear in their Learn workspace —
+          the AI tutor sees the task and asks for their try first.
+        </p>
+        {materials.length === 0 ? (
+          <p className="mt-2 text-sm text-slate-500">No materials yet.</p>
+        ) : (
+          <ul className="mt-2 divide-y divide-slate-200 rounded-lg border border-slate-200 bg-white text-sm">
+            {materials.map((m) => {
+              const stats = materialStats.get(m.id);
+              const fileKey = m.fileUrl ? parseLocalUrl(m.fileUrl) : null;
+              return (
+                <li key={m.id} className="space-y-2 px-4 py-3">
+                  <div className="flex items-center justify-between">
+                    <span className={m.isActive ? "" : "text-slate-400 line-through"}>
+                      {m.title}{" "}
+                      <span className="text-xs text-slate-400 no-underline">
+                        {m.subjectName ? `· ${m.subjectName} ` : ""}
+                        {m.dueDate ? `· due ${m.dueDate} ` : ""}
+                        {fileKey ? (
+                          <>
+                            ·{" "}
+                            <a
+                              href={`/api/files/${fileKey}`}
+                              target="_blank"
+                              className="text-teal-700 hover:underline"
+                            >
+                              file
+                            </a>
+                          </>
+                        ) : null}
+                      </span>
+                    </span>
+                    <form action={setMaterialActiveAction}>
+                      <input type="hidden" name="materialId" value={m.id} />
+                      <input type="hidden" name="isActive" value={m.isActive ? "false" : "true"} />
+                      <button className="rounded-md border border-slate-300 px-2 py-1 text-xs text-slate-500 hover:bg-slate-50">
+                        {m.isActive ? "Deactivate" : "Reactivate"}
+                      </button>
+                    </form>
+                  </div>
+                  {m.instructions ? (
+                    <p className="text-xs text-slate-500">{m.instructions}</p>
+                  ) : null}
+                  <div className="flex flex-wrap items-center gap-3 text-xs text-slate-500">
+                    <span>
+                      {stats
+                        ? `${stats.sessions} session${stats.sessions === 1 ? "" : "s"} · ${stats.hintsUsed} hints · ${stats.correct}/${stats.attempted} correct`
+                        : "not started yet"}
+                    </span>
+                    <form action={proposeGoalFromMaterialAction} className="ml-auto flex items-center gap-1">
+                      <input type="hidden" name="materialId" value={m.id} />
+                      <input
+                        name="title"
+                        required
+                        placeholder="goal from this material…"
+                        className="w-48 rounded border border-slate-300 px-2 py-1 text-xs"
+                      />
+                      <input
+                        type="date"
+                        name="targetDate"
+                        className="rounded border border-slate-300 px-2 py-1 text-xs"
+                        title="Target date (optional; defaults to the due date)"
+                      />
+                      <button className="text-xs text-teal-700 hover:underline">set goal</button>
+                    </form>
+                  </div>
+                </li>
+              );
+            })}
+          </ul>
+        )}
+
+        <details className="mt-3 rounded-lg border border-slate-200 bg-white">
+          <summary className="cursor-pointer px-4 py-2 text-sm font-medium text-slate-600">
+            Add a material
+          </summary>
+          <form action={createTeachingMaterialAction} className="space-y-2 border-t border-slate-100 p-4">
+            <input type="hidden" name="studentId" value={id} />
+            <div className="flex flex-wrap gap-2">
+              <input
+                name="title"
+                required
+                placeholder="Title (e.g. Fractions worksheet 3)"
+                className="w-64 rounded-md border border-slate-300 px-3 py-1.5 text-sm"
+              />
+              <select name="subjectId" className="rounded-md border border-slate-300 px-2 py-1.5 text-sm">
+                <option value="">No subject</option>
+                {subjects.map((sub) => (
+                  <option key={sub.id} value={sub.id}>
+                    {sub.name}
+                  </option>
+                ))}
+              </select>
+              <label className="flex items-center gap-1 text-sm text-slate-500">
+                due
+                <input type="date" name="dueDate" className="rounded-md border border-slate-300 px-2 py-1 text-sm" />
+              </label>
+            </div>
+            <textarea
+              name="instructions"
+              rows={2}
+              placeholder="Instructions for the student (the AI tutor sees these too)"
+              className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm"
+            />
+            <div className="flex items-center gap-2">
+              <input type="file" name="file" accept=".jpg,.jpeg,.png,.webp,.pdf" className="text-sm" />
+              <button className="ml-auto rounded-md bg-teal-700 px-3 py-1.5 text-sm font-medium text-white hover:bg-teal-800">
+                Add material
+              </button>
+            </div>
+            <p className="text-xs text-slate-400">
+              File is optional (JPG, PNG, WebP or PDF, max 15 MB) — it is read into text once so
+              the tutor can see the actual task.
+            </p>
+          </form>
+        </details>
       </section>
 
       <ResultsSection studentId={id} />
