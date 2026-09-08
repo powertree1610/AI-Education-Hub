@@ -90,6 +90,17 @@ export default async function ParentChildPage({
     .where(eq(s.goals.studentId, id))
     .orderBy(desc(s.goals.startDate));
 
+  const goalIds = goals.map((g) => g.id);
+  const goalUpdateRows = goalIds.length
+    ? await db
+        .select()
+        .from(s.goalUpdates)
+        .where(inArray(s.goalUpdates.goalId, goalIds))
+        .orderBy(desc(s.goalUpdates.updatedAt))
+    : [];
+  const latestGoalUpdate = new Map<string, (typeof goalUpdateRows)[number]>();
+  for (const u of goalUpdateRows) if (!latestGoalUpdate.has(u.goalId)) latestGoalUpdate.set(u.goalId, u);
+
   const works = await db
     .select({
       id: s.workSamples.id,
@@ -219,15 +230,36 @@ export default async function ParentChildPage({
       <section>
         <h2 className="font-medium">Goals</h2>
         <ul className="mt-2 divide-y divide-slate-200 rounded-lg border border-slate-200 bg-white text-sm">
-          {goals.map((g) => (
-            <li key={g.id} className="flex items-center justify-between px-4 py-2">
-              <span>
-                {g.title}{" "}
-                <span className="text-xs text-slate-400">· asked by {g.requestedByRole}</span>
-              </span>
-              <span className="text-xs text-slate-500">{g.status}</span>
-            </li>
-          ))}
+          {goals.map((g) => {
+            const latest = latestGoalUpdate.get(g.id);
+            return (
+              <li key={g.id} className="px-4 py-2">
+                <div className="flex items-center justify-between">
+                  <span>
+                    {g.title}{" "}
+                    <span className="text-xs text-slate-400">· asked by {g.requestedByRole}</span>
+                  </span>
+                  <span
+                    className={`text-xs ${
+                      g.status === "achieved"
+                        ? "font-medium text-teal-700"
+                        : g.status === "active" || g.status === "improving"
+                          ? "text-green-600"
+                          : "text-slate-500"
+                    }`}
+                  >
+                    {g.status}
+                  </span>
+                </div>
+                {latest ? (
+                  <p className="mt-1 text-xs text-slate-500">
+                    {latest.note}
+                    {latest.progress !== null ? ` · ${latest.progress}%` : ""}
+                  </p>
+                ) : null}
+              </li>
+            );
+          })}
           {goals.length === 0 ? <li className="px-4 py-2 text-slate-500">No goals yet.</li> : null}
         </ul>
         <form action={parentProposeGoalAction} className="mt-2 flex items-center gap-2">
