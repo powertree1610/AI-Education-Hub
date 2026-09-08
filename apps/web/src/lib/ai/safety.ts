@@ -204,7 +204,7 @@ export async function recordSafetyEvent(args: {
   if (!decision.escalate) return;
   try {
     const factual =
-      `Kiosk safety filter (${verdict.category}, severity ${verdict.severity}): ` +
+      `Chat safety filter (${verdict.category}, severity ${verdict.severity}): ` +
       `${verdict.rationale}\nExcerpt: ${excerpt}`;
     await getDb().transaction(async (tx) => {
       await tx.execute(sql`
