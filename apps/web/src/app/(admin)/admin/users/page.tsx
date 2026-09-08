@@ -62,7 +62,10 @@ export default async function UsersPage() {
               <td className="px-4 py-2">{u.role}</td>
               <td className="px-4 py-2">
                 {u.role === "student" ? (
-                  <span className="text-slate-400">n/a (kiosk)</span>
+                  <span className="text-xs text-slate-500">
+                    {u.username ? `signs in as ${u.username}` : "kiosk only"} — manage on the
+                    student page
+                  </span>
                 ) : (
                   <form action={setPasswordAction} className="flex items-center gap-1">
                     <input type="hidden" name="userId" value={u.id} />
