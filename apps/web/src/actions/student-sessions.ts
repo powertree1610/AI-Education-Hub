@@ -33,6 +33,10 @@ export async function startStudentSessionAction(formData: FormData) {
   const user = await requireAppUser("student");
   const kindRaw = String(formData.get("kind") ?? "");
   const kind = kindRaw === "daily" ? ("daily" as const) : ("academic" as const);
+  // Learning Workspace (v6): a Learn session may be anchored to a teacher-set
+  // material. Only academic sessions can carry one.
+  const materialIdRaw = String(formData.get("materialId") ?? "");
+  const materialId = kind === "academic" && materialIdRaw ? materialIdRaw : null;
 
   const db = getDb();
   const student = await studentForUser(user.id);
@@ -52,6 +56,19 @@ export async function startStudentSessionAction(formData: FormData) {
     }
   }
 
+  if (materialId) {
+    const material = (
+      await db
+        .select()
+        .from(s.teachingMaterials)
+        .where(eq(s.teachingMaterials.id, materialId))
+        .limit(1)
+    )[0];
+    if (!material || material.studentId !== student.id || !material.isActive) {
+      throw new Error("That task isn't available — ask your teacher");
+    }
+  }
+
   // Sweep this student's stale active sessions; resume a still-live one.
   const actives = await db
     .select()
@@ -66,7 +83,11 @@ export async function startStudentSessionAction(formData: FormData) {
         endedReason: "time_limit",
         actor: { type: "system" },
       });
-    } else if (active.startedBy === user.id && active.sessionKind === kind) {
+    } else if (
+      active.startedBy === user.id &&
+      active.sessionKind === kind &&
+      (active.materialId ?? null) === materialId
+    ) {
       redirect(`/student/chat/${active.id}`);
     }
   }
@@ -80,6 +101,7 @@ export async function startStudentSessionAction(formData: FormData) {
       supervisionMode: "unsupervised",
       sessionKind: kind,
       assistMode: student.defaultAssistMode,
+      materialId,
       status: "active",
     })
     .returning({ id: s.aiSessions.id });
@@ -90,7 +112,7 @@ export async function startStudentSessionAction(formData: FormData) {
     action: "session_started",
     entityType: "ai_session",
     entityId: session!.id,
-    details: { studentId: student.id, supervisionMode: "unsupervised", kind },
+    details: { studentId: student.id, supervisionMode: "unsupervised", kind, ...(materialId ? { materialId } : {}) },
   });
 
   redirect(`/student/chat/${session!.id}`);

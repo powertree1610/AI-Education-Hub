@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { desc, eq, inArray } from "drizzle-orm";
+import { and, desc, eq, inArray, ne } from "drizzle-orm";
 import { schema as s } from "@platform/db";
 import { getCurrentConsents, listAccessibleStudentIds } from "@platform/shared";
 import { endSessionAction, startSessionAction } from "@/actions/sessions";
@@ -48,7 +48,9 @@ export default async function SessionsPage() {
     })
     .from(s.aiSessions)
     .innerJoin(s.students, eq(s.students.id, s.aiSessions.studentId))
-    .where(eq(s.aiSessions.status, "active"))
+    // Guardians' parent chats (v6) are not kiosk sessions — staff don't
+    // manage or end them from here.
+    .where(and(eq(s.aiSessions.status, "active"), ne(s.aiSessions.sessionKind, "parent")))
     .orderBy(desc(s.aiSessions.startedAt));
 
   return (

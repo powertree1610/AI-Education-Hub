@@ -7,6 +7,7 @@ export * from "./agent-chats.js";
 export * from "./ai-usage-logs.js";
 export * from "./schools.js";
 export * from "./work-sample-texts.js";
+export * from "./teaching-materials.js";
 
 // Friendly aliases — downstream code reads `students`, not `studentsInCore`.
 export {
@@ -58,3 +59,7 @@ export {
 export { aiUsageLogsInCore as aiUsageLogs } from "./ai-usage-logs.js";
 export { schoolsInCore as schools } from "./schools.js";
 export { workSampleTextsInCore as workSampleTexts } from "./work-sample-texts.js";
+export {
+  teachingMaterialsInCore as teachingMaterials,
+  teachingMaterialTextsInCore as teachingMaterialTexts,
+} from "./teaching-materials.js";

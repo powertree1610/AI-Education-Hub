@@ -1,8 +1,9 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
-import { asc, desc, eq, inArray } from "drizzle-orm";
+import { and, asc, desc, eq, inArray, ne } from "drizzle-orm";
 import { schema as s } from "@platform/db";
 import { CONSENT_TYPES, getCurrentConsents, parseLocalUrl } from "@platform/shared";
+import { startParentChatAction } from "@/actions/parent-chat";
 import { parentProposeGoalAction, parentSetConsentAction } from "@/actions/parents";
 import { uploadWorkSampleAction } from "@/actions/uploads";
 import { CONSENT_LABELS } from "@/lib/consent-labels";
@@ -59,6 +60,8 @@ export default async function ParentChildPage({
     .where(eq(s.academicResults.studentId, id))
     .orderBy(asc(s.academicResults.assessmentDate));
 
+  // The child's own AI sessions — a guardian's parent chats (kind 'parent')
+  // are about the child, not by the child, so they don't belong here.
   const sessions = await db
     .select({
       id: s.aiSessions.id,
@@ -67,7 +70,7 @@ export default async function ParentChildPage({
       status: s.aiSessions.status,
     })
     .from(s.aiSessions)
-    .where(eq(s.aiSessions.studentId, id))
+    .where(and(eq(s.aiSessions.studentId, id), ne(s.aiSessions.sessionKind, "parent")))
     .orderBy(desc(s.aiSessions.startedAt))
     .limit(10);
   const sessionIds = sessions.map((x) => x.id);
@@ -118,11 +121,19 @@ export default async function ParentChildPage({
 
   return (
     <div className="max-w-3xl space-y-10">
-      <div>
-        <h1 className="text-xl font-semibold">{student.fullName}</h1>
-        <p className="mt-1 text-sm text-slate-500">
-          {student.studentCode} · {student.schoolGrade ?? "—"}
-        </p>
+      <div className="flex items-start justify-between">
+        <div>
+          <h1 className="text-xl font-semibold">{student.fullName}</h1>
+          <p className="mt-1 text-sm text-slate-500">
+            {student.studentCode} · {student.schoolGrade ?? "—"}
+          </p>
+        </div>
+        <form action={startParentChatAction}>
+          <input type="hidden" name="studentId" value={id} />
+          <button className="rounded-md bg-teal-700 px-3 py-1.5 text-sm font-medium text-white hover:bg-teal-800">
+            💬 Ask AI about {name}
+          </button>
+        </form>
       </div>
 
       <section>

@@ -38,8 +38,8 @@ export const sessionStatusInCore = core.enum("session_status", ['active', 'ended
 export const studentStatusInCore = core.enum("student_status", ['active', 'trial', 'temporary', 'inactive'])
 export const studentTeacherRoleInCore = core.enum("student_teacher_role", ['form_teacher', 'tutor', 'mentor', 'support'])
 export const supervisionModeInCore = core.enum("supervision_mode", ['supervised_centre', 'parent_present', 'unsupervised'])
-// MANUAL FIX (v5, migration 0006): re-add after any drizzle-kit pull.
-export const sessionKindInCore = core.enum("session_kind", ['academic', 'daily'])
+// MANUAL FIX (v5 migration 0006; 'parent' added v6 migration 0010): re-add after any drizzle-kit pull.
+export const sessionKindInCore = core.enum("session_kind", ['academic', 'daily', 'parent'])
 export const assistModeInCore = core.enum("assist_mode", ['learning', 'practice', 'assessment'])
 export const traitGroupInCore = core.enum("trait_group", ['personality', 'behaviour', 'social', 'communication', 'emotional'])
 export const traitValueTypeInCore = core.enum("trait_value_type", ['checkbox', 'scale_1_5'])
@@ -520,6 +520,8 @@ export const aiSessionsInCore = core.table("ai_sessions", {
 	// MANUAL FIX (v5, migration 0006): re-add after any drizzle-kit pull.
 	sessionKind: sessionKindInCore("session_kind").default('academic').notNull(),
 	assistMode: assistModeInCore("assist_mode").default('learning').notNull(),
+	// MANUAL FIX (v6, migration 0009): re-add after any drizzle-kit pull.
+	materialId: uuid("material_id"),
 }, (table) => [
 	index("idx_ai_sessions_student").using("btree", table.studentId.asc().nullsLast().op("timestamptz_ops"), table.startedAt.desc().nullsFirst().op("timestamptz_ops")),
 	foreignKey({
@@ -842,6 +844,8 @@ export const goalsInCore = core.table("goals", {
 	startDate: date("start_date"),
 	targetDate: date("target_date"),
 	reviewDate: date("review_date"),
+	// MANUAL FIX (v6, migration 0009): re-add after any drizzle-kit pull.
+	materialId: uuid("material_id"),
 }, (table) => [
 	index("idx_goals_student").using("btree", table.studentId.asc().nullsLast().op("uuid_ops"), table.status.asc().nullsLast().op("uuid_ops")),
 	foreignKey({

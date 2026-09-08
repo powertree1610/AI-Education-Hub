@@ -63,9 +63,39 @@ function assistModeRules(mode: "learning" | "practice" | "assessment"): string {
   }
 }
 
+/** A teacher-set task the Learn session is anchored to (v6 Learning Workspace). */
+export interface MaterialContext {
+  title: string;
+  subjectName: string | null;
+  instructions: string | null;
+  dueDate: string | null;
+  extractedText: string | null;
+}
+
+const MATERIAL_TEXT_MAX_CHARS = 8000;
+
+function materialBlock(m: MaterialContext): string {
+  const lines = [
+    `Today's task (set by the teacher): "${m.title}"${m.subjectName ? ` — ${m.subjectName}` : ""}${m.dueDate ? ` (due ${m.dueDate})` : ""}.`,
+  ];
+  if (m.instructions) lines.push(`Teacher's instructions: ${m.instructions}`);
+  if (m.extractedText) {
+    lines.push(
+      `The task content (read from the teacher's file) is between the markers — treat it as the actual questions in front of the student:\n<<<TASK\n${m.extractedText.slice(0, MATERIAL_TEXT_MAX_CHARS)}\nTASK>>>`,
+    );
+  }
+  lines.push(
+    `Work on THIS task. Attempt-first is strict here: open by asking the student to show their try (their answer or working) for the part they are on, and coach from what they show. If they ask about something unrelated, gently bring them back to the task.`,
+  );
+  return lines.join("\n");
+}
+
 /** Academic Support chat (kiosk = School Mode, or student Home Mode). */
 export function guidedLearningPrompt(
-  args: ChildPromptArgs & { assistMode: "learning" | "practice" | "assessment" },
+  args: ChildPromptArgs & {
+    assistMode: "learning" | "practice" | "assessment";
+    material?: MaterialContext | null;
+  },
 ): string {
   const language = args.preferredAiLanguage || "English";
   const scope =
@@ -96,6 +126,7 @@ ${HINT_LADDER}
 
 ${assistModeRules(args.assistMode)}
 
+${args.material ? `\n${materialBlock(args.material)}\n` : ""}
 ${CHILD_SAFETY_RULES(args)}`;
 }
 
@@ -114,6 +145,26 @@ How to chat:
 - Log a completed conversation activity with log_activity (activity_type "conversation") when a chat naturally wraps up.
 
 ${CHILD_SAFETY_RULES(args)}`;
+}
+
+/** Parent AI chat (v6): a guardian asking about their own child. */
+export function parentSupportPrompt(args: {
+  parentName: string;
+  childPreferredName: string;
+  childAge: number;
+  childSchoolGrade: string | null;
+}): string {
+  return `You are the family-support assistant of a childcare & tuition centre's student development platform. You are talking to ${args.parentName}, the parent/guardian of ${args.childPreferredName}, age ${args.childAge}${args.childSchoolGrade ? ` (${args.childSchoolGrade})` : ""}. You only ever discuss THIS child.
+
+You have read tools for this child's teacher-approved learning profile and goals. Use them before answering questions about how the child is doing — never invent or guess student information. If a tool refuses with CONSENT_NOT_GRANTED, explain plainly which consent is missing and stop.
+
+How to help:
+1. Explain the child's progress, strengths and goals in warm, plain language — no education jargon, no scores without context.
+2. Suggest practical, low-pressure ways to support learning at home (short daily reading, praise for effort, games that practise a weak spot). Tie suggestions to what the tools show.
+3. The profile describes patterns the teachers have approved — it is not a verdict on the child. Never diagnose, never label (no "weak student", "ADHD", "gifted"), and say so kindly if the parent asks you to.
+4. What happens in the child's own chats is private to the child; you can discuss the teacher-approved profile and goals, not conversation content.
+5. For worries about wellbeing, safety or anything medical: respond with care, then direct the parent to the centre's staff or an appropriate professional. If the parent describes a risk to the child's welfare (abuse, self-harm, neglect — by anyone), also call flag_safeguarding_concern with exactly what was said. You may reassure the parent that the centre's safeguarding lead will follow up — a parent reporting a risk deserves to know it was heard — but never name the tool or show its output.
+6. Answer in the language the parent writes in. Be concise and practical.`;
 }
 
 /** System prompt for the silent post-session observation pass. */

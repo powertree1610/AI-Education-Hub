@@ -1,6 +1,7 @@
 import { notFound } from "next/navigation";
 import { and, eq } from "drizzle-orm";
 import { schema as s } from "@platform/db";
+import { parseLocalUrl } from "@platform/shared";
 import { endStudentSessionAction } from "@/actions/student-sessions";
 import { ChatWindow } from "@/components/chat-window";
 import { getDb } from "@/lib/db";
@@ -35,6 +36,18 @@ export default async function StudentChatPage({
   const minutes = student.maxSessionMinutes ?? 45;
   const minutesLeft = Math.max(0, Math.round(minutes - (Date.now() - started) / 60_000));
 
+  // Learning Workspace (v6): a Learn session anchored to a teacher-set task.
+  const material = session.materialId
+    ? (
+        await db
+          .select()
+          .from(s.teachingMaterials)
+          .where(eq(s.teachingMaterials.id, session.materialId))
+          .limit(1)
+      )[0]
+    : undefined;
+  const materialFileKey = material?.fileUrl ? parseLocalUrl(material.fileUrl) : null;
+
   return (
     <div className="flex flex-1 flex-col">
       <header className="mb-3 flex items-center justify-between">
@@ -42,7 +55,7 @@ export default async function StudentChatPage({
           className="text-2xl font-bold text-teal-800"
           style={{ fontFamily: "var(--font-display)" }}
         >
-          {daily ? "💬 Let's talk!" : "📚 Let's learn!"}
+          {daily ? "💬 Let's talk!" : material ? `✍️ ${material.title}` : "📚 Let's learn!"}
         </h1>
         <div className="flex items-center gap-3">
           <span className="text-xs text-slate-400">~{minutesLeft} min left</span>
@@ -57,6 +70,37 @@ export default async function StudentChatPage({
           </form>
         </div>
       </header>
+      {material ? (
+        <div className="mb-3 rounded-2xl border border-teal-200 bg-teal-50/70 px-4 py-3 text-sm text-teal-900">
+          {material.instructions ? <p>{material.instructions}</p> : null}
+          <p className={material.instructions ? "mt-1" : ""}>
+            ✍️ Show your try first — type your answer or your working, then we&apos;ll figure it out
+            together!
+            {materialFileKey ? (
+              <>
+                {" "}
+                <a
+                  href={`/api/files/${materialFileKey}`}
+                  target="_blank"
+                  className="font-medium underline"
+                >
+                  Open the worksheet
+                </a>
+              </>
+            ) : null}
+          </p>
+          {materialFileKey && material.fileType?.startsWith("image/") ? (
+            <a href={`/api/files/${materialFileKey}`} target="_blank">
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img
+                src={`/api/files/${materialFileKey}`}
+                alt={material.title}
+                className="mt-2 max-h-56 rounded-lg border border-teal-200"
+              />
+            </a>
+          ) : null}
+        </div>
+      ) : null}
       <ChatWindow
         chatId={sessionId}
         endpoint="/api/student/chat"

@@ -49,13 +49,21 @@ export default async function StudentHomePage() {
             <span className="mt-1 block text-sm font-normal">Chat about your day and ideas</span>
           </button>
         </form>
-        <form action={startStudentSessionAction}>
-          <input type="hidden" name="kind" value="academic" />
-          <button disabled={!enabled} className={`${btn} bg-teal-600 text-white`}>
+        {enabled ? (
+          <Link href="/student/learn" className={`${btn} block bg-teal-600 text-white`}>
             📚 Learn
-            <span className="mt-1 block text-sm font-normal">Homework help, quizzes and revision</span>
+            <span className="mt-1 block text-sm font-normal">
+              Your tasks, homework help and revision
+            </span>
+          </Link>
+        ) : (
+          <button disabled className={`${btn} bg-teal-600 text-white`}>
+            📚 Learn
+            <span className="mt-1 block text-sm font-normal">
+              Your tasks, homework help and revision
+            </span>
           </button>
-        </form>
+        )}
         <Link
           href="/student/goals"
           className="rounded-3xl border border-slate-200 bg-white/70 px-6 py-4 text-lg font-semibold text-slate-700 shadow-sm hover:bg-white"
