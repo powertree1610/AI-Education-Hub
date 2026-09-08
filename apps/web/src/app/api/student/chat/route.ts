@@ -3,7 +3,7 @@ import { handleSessionChat } from "@/lib/ai/session-chat";
 
 export const dynamic = "force-dynamic";
 
-/** School Mode: teacher-started kiosk session on a centre device. */
+/** Home Mode: the student's own self-serve session. */
 export async function POST(req: NextRequest) {
-  return handleSessionChat(req, "kiosk");
+  return handleSessionChat(req, "student");
 }

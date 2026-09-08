@@ -12,19 +12,25 @@ export default async function SessionsPage() {
   const user = await requireRoleOrRedirect("teacher", "admin");
   const db = getDb();
 
-  let students: { id: string; fullName: string; studentCode: string }[] = [];
+  type StudentRow = {
+    id: string;
+    fullName: string;
+    studentCode: string;
+    defaultAssistMode: (typeof s.assistModeInCore.enumValues)[number];
+  };
+  const studentCols = {
+    id: s.students.id,
+    fullName: s.students.fullName,
+    studentCode: s.students.studentCode,
+    defaultAssistMode: s.students.defaultAssistMode,
+  };
+  let students: StudentRow[] = [];
   if (user.role === "admin") {
-    students = await db
-      .select({ id: s.students.id, fullName: s.students.fullName, studentCode: s.students.studentCode })
-      .from(s.students)
-      .where(eq(s.students.status, "active"));
+    students = await db.select(studentCols).from(s.students).where(eq(s.students.status, "active"));
   } else {
     const ids = await listAccessibleStudentIds(db, user.id);
     if (ids.length > 0) {
-      students = await db
-        .select({ id: s.students.id, fullName: s.students.fullName, studentCode: s.students.studentCode })
-        .from(s.students)
-        .where(inArray(s.students.id, ids));
+      students = await db.select(studentCols).from(s.students).where(inArray(s.students.id, ids));
     }
   }
 
@@ -98,8 +104,20 @@ export default async function SessionsPage() {
                     <span className="text-slate-500">· {st.studentCode}</span>
                   </span>
                   {hasConsent ? (
-                    <form action={startSessionAction}>
+                    <form action={startSessionAction} className="flex items-center gap-2">
                       <input type="hidden" name="studentId" value={st.id} />
+                      <select
+                        name="assistMode"
+                        defaultValue={st.defaultAssistMode}
+                        className="rounded-md border border-slate-300 px-2 py-1 text-xs"
+                        title="Assist mode for this session"
+                      >
+                        {s.assistModeInCore.enumValues.map((m) => (
+                          <option key={m} value={m}>
+                            {m}
+                          </option>
+                        ))}
+                      </select>
                       <button
                         type="submit"
                         className="rounded-md bg-teal-700 px-3 py-1.5 text-xs font-medium text-white hover:bg-teal-800"

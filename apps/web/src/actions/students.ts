@@ -148,3 +148,61 @@ export async function setConsentAction(formData: FormData) {
 
   revalidatePath(`/admin/students/${studentId}`);
 }
+
+/** Admin-only: AI access level + Home Mode controls (v5). Every field
+ *  change is audited individually. */
+export async function updateAiAccessAction(formData: FormData) {
+  const admin = await requireAppUser("admin");
+  const db = getDb();
+
+  const studentId = String(formData.get("studentId") ?? "");
+  const student = (await db.select().from(s.students).where(eq(s.students.id, studentId)).limit(1))[0];
+  if (!student) throw new Error("Student not found");
+
+  const level = String(formData.get("aiAccessLevel") ?? "");
+  const assistMode = String(formData.get("defaultAssistMode") ?? "");
+  if (!(s.aiAccessLevelInCore.enumValues as readonly string[]).includes(level)) {
+    throw new Error("Invalid AI access level");
+  }
+  if (!(s.assistModeInCore.enumValues as readonly string[]).includes(assistMode)) {
+    throw new Error("Invalid assist mode");
+  }
+  const unsupervised = formData.get("unsupervisedAccessEnabled") === "on";
+  const minutesRaw = Number(String(formData.get("maxSessionMinutes") ?? "45"));
+  const maxMinutes = Number.isFinite(minutesRaw) ? Math.min(180, Math.max(5, Math.round(minutesRaw))) : 45;
+  const hoursStart = String(formData.get("allowedHoursStart") ?? "").trim() || null;
+  const hoursEnd = String(formData.get("allowedHoursEnd") ?? "").trim() || null;
+
+  const next = {
+    aiAccessLevel: level as (typeof s.aiAccessLevelInCore.enumValues)[number],
+    defaultAssistMode: assistMode as (typeof s.assistModeInCore.enumValues)[number],
+    unsupervisedAccessEnabled: unsupervised,
+    maxSessionMinutes: maxMinutes,
+    allowedHoursStart: hoursStart,
+    allowedHoursEnd: hoursEnd,
+  };
+  await db.update(s.students).set(next).where(eq(s.students.id, studentId));
+
+  const prev: Record<string, unknown> = {
+    aiAccessLevel: student.aiAccessLevel,
+    defaultAssistMode: student.defaultAssistMode,
+    unsupervisedAccessEnabled: student.unsupervisedAccessEnabled,
+    maxSessionMinutes: student.maxSessionMinutes,
+    allowedHoursStart: student.allowedHoursStart,
+    allowedHoursEnd: student.allowedHoursEnd,
+  };
+  for (const [key, to] of Object.entries(next)) {
+    if (prev[key] !== to) {
+      await writeAudit(db, {
+        actorType: "user",
+        actorId: admin.id,
+        action: "ai_access_updated",
+        entityType: "student",
+        entityId: studentId,
+        details: { key, from: prev[key] ?? null, to },
+      });
+    }
+  }
+
+  revalidatePath(`/admin/students/${studentId}`);
+}
