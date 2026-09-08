@@ -1,5 +1,5 @@
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
-import { and, desc, eq, type SQL } from "drizzle-orm";
+import { and, desc, eq, inArray, type SQL } from "drizzle-orm";
 import { z } from "zod";
 import { schema as s } from "@platform/db";
 import { STUDENT_REF, defineTool } from "../define-tool.js";
@@ -34,7 +34,26 @@ export function registerGoalTools(server: McpServer): void {
         .where(and(...filters))
         .orderBy(desc(s.goals.startDate));
 
-      return { goals: rows };
+      // Latest teacher progress note per goal (goal_updates is append-only).
+      const ids = rows.map((r) => r.goal_id);
+      const updates = ids.length
+        ? await db
+            .select({
+              goal_id: s.goalUpdates.goalId,
+              note: s.goalUpdates.note,
+              progress: s.goalUpdates.progress,
+              updated_at: s.goalUpdates.updatedAt,
+            })
+            .from(s.goalUpdates)
+            .where(inArray(s.goalUpdates.goalId, ids))
+            .orderBy(desc(s.goalUpdates.updatedAt))
+        : [];
+      const latest = new Map<string, (typeof updates)[number]>();
+      for (const u of updates) if (!latest.has(u.goal_id)) latest.set(u.goal_id, u);
+
+      return {
+        goals: rows.map((r) => ({ ...r, latest_update: latest.get(r.goal_id) ?? null })),
+      };
     },
   });
 

@@ -2,8 +2,10 @@
 
 import { randomUUID } from "node:crypto";
 import { revalidatePath } from "next/cache";
+import { after } from "next/server";
 import { schema as s } from "@platform/db";
 import { canUserAccessStudent, formatLocalUrl, writeAudit } from "@platform/shared";
+import { extractAndStoreSampleText } from "@/lib/ai/extract-sample-text";
 import { requireAppUser } from "@/lib/auth";
 import { getDb } from "@/lib/db";
 import { isChildOfGuardianUser } from "@/lib/parents";
@@ -92,6 +94,10 @@ export async function uploadWorkSampleAction(formData: FormData) {
     entityId: sample!.id,
     details: { studentId, workType, sizeBytes: file.size },
   });
+
+  // v5: OCR once at upload; the AI's read tool then serves the cached text.
+  const sampleId = sample!.id;
+  after(() => extractAndStoreSampleText(sampleId, user.id));
 
   revalidatePath(`/admin/students/${studentId}`);
   revalidatePath(`/parent/children/${studentId}`);

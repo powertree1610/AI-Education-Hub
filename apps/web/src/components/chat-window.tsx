@@ -76,6 +76,8 @@ export function ChatWindow({
   const [messages, setMessages] = useState<DisplayMessage[]>(initialMessages);
   const [input, setInput] = useState("");
   const [busy, setBusy] = useState(false);
+  // Server ended the session mid-conversation (Home Mode time limit).
+  const [ended, setEnded] = useState(false);
   const bottomRef = useRef<HTMLDivElement>(null);
 
   function scroll() {
@@ -84,7 +86,7 @@ export function ChatWindow({
 
   async function send() {
     const text = input.trim();
-    if (!text || busy) return;
+    if (!text || busy || ended) return;
     setInput("");
     setBusy(true);
     setMessages((m) => [...m, { role: "user", text }]);
@@ -175,6 +177,8 @@ export function ChatWindow({
               }
               return copy;
             });
+          } else if (event.type === "session_ended") {
+            setEnded(true);
           } else if (event.type === "error") {
             setMessages((m) => [...m, { role: "tool_note", text: `Error: ${event.message}` }]);
           }
@@ -228,13 +232,13 @@ export function ChatWindow({
             }
           }}
           rows={2}
-          placeholder={busy ? "Working…" : "Type a message (Enter to send)"}
-          disabled={busy}
+          placeholder={ended ? "This chat has ended 👋" : busy ? "Working…" : "Type a message (Enter to send)"}
+          disabled={busy || ended}
           className="flex-1 resize-none rounded-md border border-slate-300 px-3 py-2 text-sm"
         />
         <button
           onClick={() => void send()}
-          disabled={busy || !input.trim()}
+          disabled={busy || ended || !input.trim()}
           className="rounded-md bg-teal-700 px-4 text-sm font-medium text-white disabled:opacity-50"
         >
           Send

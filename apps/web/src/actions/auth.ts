@@ -7,7 +7,7 @@ import { signIn, signOut } from "@/auth";
 export async function credentialsSignInAction(formData: FormData) {
   try {
     await signIn("credentials", {
-      email: String(formData.get("email") ?? ""),
+      identifier: String(formData.get("identifier") ?? ""),
       password: String(formData.get("password") ?? ""),
       redirectTo: "/",
     });

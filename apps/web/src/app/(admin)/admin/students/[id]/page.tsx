@@ -5,8 +5,9 @@ import { schema as s } from "@platform/db";
 import { CONSENT_TYPES, getCurrentConsents, parseLocalUrl } from "@platform/shared";
 import { endStudentTeacherAction, linkStudentTeacherAction } from "@/actions/classes";
 import { enableGuardianPortalAction } from "@/actions/parents";
-import { setConsentAction } from "@/actions/students";
+import { setConsentAction, updateAiAccessAction } from "@/actions/students";
 import { uploadWorkSampleAction } from "@/actions/uploads";
+import { provisionStudentAccountAction } from "@/actions/users";
 import { ResultsSection } from "@/components/results-section";
 import { CONSENT_LABELS } from "@/lib/consent-labels";
 import { getDb } from "@/lib/db";
@@ -25,6 +26,19 @@ export default async function StudentDetailPage({
   const db = getDb();
 
   const student = (await db.select().from(s.students).where(eq(s.students.id, id)).limit(1))[0];
+  const account = student?.userId
+    ? (
+        await db
+          .select({ username: s.users.username, hasPassword: s.users.passwordHash, isActive: s.users.isActive })
+          .from(s.users)
+          .where(eq(s.users.id, student.userId))
+          .limit(1)
+      )[0]
+    : undefined;
+  // School from the master table; legacy rows fall back to the old free text.
+  const school = student?.schoolId
+    ? (await db.select({ name: s.schools.name }).from(s.schools).where(eq(s.schools.id, student.schoolId)).limit(1))[0]
+    : undefined;
   if (!student) notFound();
 
   const guardians = await db
@@ -119,7 +133,8 @@ export default async function StudentDetailPage({
           <div>
             <dt className="text-slate-500">School</dt>
             <dd>
-              {student.schoolName ?? "—"} {student.schoolGrade ? `(${student.schoolGrade})` : ""}
+              {school?.name ?? student.schoolName ?? "—"}{" "}
+              {student.schoolGrade ? `(${student.schoolGrade})` : ""}
             </dd>
           </div>
           <div>
@@ -132,6 +147,131 @@ export default async function StudentDetailPage({
           </div>
         </dl>
       </div>
+
+      <section>
+        <h2 className="font-medium">Student sign-in account</h2>
+        <p className="mt-1 text-sm text-slate-500">
+          For Home Mode: the student signs in at the main sign-in page with a username (no email
+          needed). Leave the password blank to keep the current one.
+        </p>
+        <form
+          action={provisionStudentAccountAction}
+          className="mt-2 flex flex-wrap items-center gap-2 rounded-lg border border-slate-200 bg-white p-4 text-sm"
+        >
+          <input type="hidden" name="studentId" value={id} />
+          <label className="text-slate-600">
+            Username
+            <input
+              name="username"
+              defaultValue={account?.username ?? ""}
+              required
+              pattern="[a-z0-9._-]{3,60}"
+              className="ml-2 rounded-md border border-slate-300 px-2 py-1"
+            />
+          </label>
+          <label className="text-slate-600">
+            Password
+            <input
+              name="password"
+              type="password"
+              placeholder={account?.hasPassword ? "unchanged" : "set password…"}
+              className="ml-2 w-36 rounded-md border border-slate-300 px-2 py-1"
+            />
+          </label>
+          <button className="rounded-md bg-teal-700 px-3 py-1.5 font-medium text-white hover:bg-teal-800">
+            {account ? "Update account" : "Create account"}
+          </button>
+          {account ? (
+            <span className={`text-xs ${account.isActive ? "text-green-600" : "text-red-600"}`}>
+              {account.isActive ? "active" : "inactive"} {account.hasPassword ? "· password set ✓" : "· no password"}
+            </span>
+          ) : (
+            <span className="text-xs text-slate-400">no account yet — kiosk only</span>
+          )}
+        </form>
+      </section>
+
+      <section>
+        <h2 className="font-medium">AI access &amp; Home Mode</h2>
+        <p className="mt-1 text-sm text-slate-500">
+          Home Mode lets the student chat from their own account, unsupervised. Hours are in the
+          centre&apos;s timezone; sessions close automatically at the minute limit.
+        </p>
+        <form
+          action={updateAiAccessAction}
+          className="mt-2 flex flex-wrap items-end gap-4 rounded-lg border border-slate-200 bg-white p-4 text-sm"
+        >
+          <input type="hidden" name="studentId" value={id} />
+          <label className="text-slate-600">
+            AI access level
+            <select
+              name="aiAccessLevel"
+              defaultValue={student.aiAccessLevel}
+              className="mt-1 block rounded-md border border-slate-300 px-2 py-1"
+            >
+              {s.aiAccessLevelInCore.enumValues.map((v) => (
+                <option key={v} value={v}>
+                  {v.replace(/_/g, " ")}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label className="text-slate-600">
+            Default assist mode
+            <select
+              name="defaultAssistMode"
+              defaultValue={student.defaultAssistMode}
+              className="mt-1 block rounded-md border border-slate-300 px-2 py-1"
+            >
+              {s.assistModeInCore.enumValues.map((v) => (
+                <option key={v} value={v}>
+                  {v}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label className="flex items-center gap-2 text-slate-600">
+            <input
+              type="checkbox"
+              name="unsupervisedAccessEnabled"
+              defaultChecked={student.unsupervisedAccessEnabled}
+            />
+            Home Mode enabled
+          </label>
+          <label className="text-slate-600">
+            Max minutes
+            <input
+              name="maxSessionMinutes"
+              type="number"
+              min={5}
+              max={180}
+              defaultValue={student.maxSessionMinutes ?? 45}
+              className="mt-1 block w-20 rounded-md border border-slate-300 px-2 py-1"
+            />
+          </label>
+          <label className="text-slate-600">
+            Hours from
+            <input
+              name="allowedHoursStart"
+              type="time"
+              defaultValue={student.allowedHoursStart?.slice(0, 5) ?? ""}
+              className="mt-1 block rounded-md border border-slate-300 px-2 py-1"
+            />
+          </label>
+          <label className="text-slate-600">
+            to
+            <input
+              name="allowedHoursEnd"
+              type="time"
+              defaultValue={student.allowedHoursEnd?.slice(0, 5) ?? ""}
+              className="mt-1 block rounded-md border border-slate-300 px-2 py-1"
+            />
+          </label>
+          <button className="rounded-md bg-teal-700 px-3 py-1.5 font-medium text-white hover:bg-teal-800">
+            Save
+          </button>
+        </form>
+      </section>
 
       <section>
         <h2 className="font-medium">Guardians</h2>

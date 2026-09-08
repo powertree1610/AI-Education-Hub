@@ -38,6 +38,9 @@ export const sessionStatusInCore = core.enum("session_status", ['active', 'ended
 export const studentStatusInCore = core.enum("student_status", ['active', 'trial', 'temporary', 'inactive'])
 export const studentTeacherRoleInCore = core.enum("student_teacher_role", ['form_teacher', 'tutor', 'mentor', 'support'])
 export const supervisionModeInCore = core.enum("supervision_mode", ['supervised_centre', 'parent_present', 'unsupervised'])
+// MANUAL FIX (v5, migration 0006): re-add after any drizzle-kit pull.
+export const sessionKindInCore = core.enum("session_kind", ['academic', 'daily'])
+export const assistModeInCore = core.enum("assist_mode", ['learning', 'practice', 'assessment'])
 export const traitGroupInCore = core.enum("trait_group", ['personality', 'behaviour', 'social', 'communication', 'emotional'])
 export const traitValueTypeInCore = core.enum("trait_value_type", ['checkbox', 'scale_1_5'])
 export const userRoleInCore = core.enum("user_role", ['admin', 'teacher', 'guardian', 'student'])
@@ -514,6 +517,9 @@ export const aiSessionsInCore = core.table("ai_sessions", {
 	startedByRole: userRoleInCore("started_by_role").default('teacher').notNull(),
 	supervisionMode: supervisionModeInCore("supervision_mode").default('supervised_centre').notNull(),
 	endedReason: varchar("ended_reason", { length: 50 }),
+	// MANUAL FIX (v5, migration 0006): re-add after any drizzle-kit pull.
+	sessionKind: sessionKindInCore("session_kind").default('academic').notNull(),
+	assistMode: assistModeInCore("assist_mode").default('learning').notNull(),
 }, (table) => [
 	index("idx_ai_sessions_student").using("btree", table.studentId.asc().nullsLast().op("timestamptz_ops"), table.startedAt.desc().nullsFirst().op("timestamptz_ops")),
 	foreignKey({
@@ -552,6 +558,9 @@ export const studentsInCore = core.table("students", {
 	maxSessionMinutes: smallint("max_session_minutes").default(45),
 	allowedHoursStart: time("allowed_hours_start"),
 	allowedHoursEnd: time("allowed_hours_end"),
+	// MANUAL FIX (v5, migrations 0005/0006): re-add after any drizzle-kit pull.
+	schoolId: uuid("school_id"),
+	defaultAssistMode: assistModeInCore("default_assist_mode").default('learning').notNull(),
 }, (table) => [
 	foreignKey({
 			columns: [table.branchId],

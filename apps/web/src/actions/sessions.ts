@@ -3,18 +3,11 @@
 import { and, eq } from "drizzle-orm";
 import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
-import { after } from "next/server";
 import { schema as s } from "@platform/db";
-import {
-  canUserAccessStudent,
-  checkConsent,
-  writeAudit,
-  type TranscriptMessage,
-} from "@platform/shared";
-import { runPostSessionPass } from "@/lib/ai/post-session";
+import { canUserAccessStudent, checkConsent, writeAudit } from "@platform/shared";
 import { requireAppUser } from "@/lib/auth";
 import { getDb } from "@/lib/db";
-import { clearKioskHistory, kioskHistory } from "@/lib/kiosk-state";
+import { finalizeSession } from "@/lib/session-lifecycle";
 
 export async function startSessionAction(formData: FormData) {
   const user = await requireAppUser("teacher", "admin");
@@ -37,6 +30,14 @@ export async function startSessionAction(formData: FormData) {
     throw new Error(`Cannot start a session: consent not granted (${missing.join(", ")})`);
   }
 
+  // Kiosk sessions are always academic; assist mode defaults to the
+  // student's teacher-set policy, overridable per session at start.
+  const student = (await db.select().from(s.students).where(eq(s.students.id, studentId)).limit(1))[0];
+  const assistModeRaw = String(formData.get("assistMode") ?? "");
+  const assistMode = (s.assistModeInCore.enumValues as readonly string[]).includes(assistModeRaw)
+    ? (assistModeRaw as (typeof s.assistModeInCore.enumValues)[number])
+    : (student?.defaultAssistMode ?? "learning");
+
   const [session] = await db
     .insert(s.aiSessions)
     .values({
@@ -44,6 +45,8 @@ export async function startSessionAction(formData: FormData) {
       startedBy: user.id,
       startedByRole: user.role === "admin" ? "admin" : "teacher",
       supervisionMode: "supervised_centre",
+      sessionKind: "academic",
+      assistMode,
       deviceId: String(formData.get("deviceId") ?? "") || null,
       status: "active",
     })
@@ -75,75 +78,11 @@ export async function endSessionAction(formData: FormData) {
   )[0];
   if (!session) throw new Error("Active session not found");
 
-  // Session lifecycle is app_user work — ai_agent has no UPDATE grant here.
-  await db
-    .update(s.aiSessions)
-    .set({ endedAt: new Date().toISOString(), status: "ended", endedReason: "Teacher ended" })
-    .where(eq(s.aiSessions.id, sessionId));
-
-  await writeAudit(db, {
-    actorType: "user",
-    actorId: user.id,
-    action: "session_ended",
-    entityType: "ai_session",
-    entityId: sessionId,
+  await finalizeSession({
+    session: { id: sessionId, studentId: session.studentId },
+    endedReason: "Teacher ended",
+    actor: { type: "user", id: user.id },
   });
-
-  // Transcript persists ONLY when conversation_storage is granted at end time.
-  const { granted } = await checkConsent(db, session.studentId, ["conversation_storage"]);
-  const history = kioskHistory(sessionId);
-  if (granted && history.length > 0) {
-    const messages: TranscriptMessage[] = history
-      .filter((m) => (m.role === "user" || m.role === "assistant") && typeof m.content === "string")
-      .map((m) => ({
-        role: m.role === "user" ? ("student" as const) : ("assistant" as const),
-        text: m.content as string,
-      }));
-    const retentionDays = Number(process.env.TRANSCRIPT_RETENTION_DAYS || 365);
-    await db.insert(s.sessionTranscripts).values({
-      sessionId,
-      messages,
-      expiresAt: new Date(Date.now() + retentionDays * 24 * 3600 * 1000).toISOString(),
-    });
-    await writeAudit(db, {
-      actorType: "system",
-      action: "transcript_saved",
-      entityType: "ai_session",
-      entityId: sessionId,
-      details: { messageCount: messages.length },
-    });
-  }
-  // Per-session observation pass (design §9): capture the evidence BEFORE
-  // clearing the running context, run after the response so teardown is never
-  // slowed or broken by the AI call.
-  if (history.length > 0) {
-    const transcriptText = history
-      .filter((m) => (m.role === "user" || m.role === "assistant") && typeof m.content === "string")
-      .map((m) => `${m.role === "user" ? "student" : "tutor"}: ${m.content as string}`)
-      .join("\n");
-    const activities = await db
-      .select({
-        activityType: s.sessionActivities.activityType,
-        topic: s.sessionActivities.topic,
-        attempted: s.sessionActivities.attempted,
-        correct: s.sessionActivities.correct,
-        hintsUsed: s.sessionActivities.hintsUsed,
-        engagementLevel: s.sessionActivities.engagementLevel,
-      })
-      .from(s.sessionActivities)
-      .where(eq(s.sessionActivities.sessionId, sessionId));
-
-    after(() =>
-      runPostSessionPass({
-        sessionId,
-        studentId: session.studentId,
-        activities,
-        transcriptText: transcriptText || null,
-      }),
-    );
-  }
-
-  clearKioskHistory(sessionId);
 
   revalidatePath("/teacher/sessions");
   redirect("/teacher/sessions");

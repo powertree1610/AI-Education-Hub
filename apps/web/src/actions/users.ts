@@ -59,7 +59,6 @@ export async function setPasswordAction(formData: FormData) {
 
   const target = (await db.select().from(s.users).where(eq(s.users.id, userId)).limit(1))[0];
   if (!target) throw new Error("User not found");
-  if (target.role === "student") throw new Error("Students do not sign in with passwords");
 
   const passwordHash = await bcrypt.hash(password, 10);
   await db.update(s.users).set({ passwordHash }).where(eq(s.users.id, userId));
@@ -129,4 +128,61 @@ export async function toggleSafeguardingLeadAction(formData: FormData) {
   });
 
   revalidatePath("/admin/users");
+}
+
+const USERNAME_RE = /^[a-z0-9._-]{3,60}$/;
+
+/** Create or update a student's own sign-in account (v5 Home Mode).
+ *  Links core.users(role student) to the student via students.user_id. */
+export async function provisionStudentAccountAction(formData: FormData) {
+  const admin = await requireAppUser("admin");
+  const db = getDb();
+
+  const studentId = String(formData.get("studentId") ?? "");
+  const username = String(formData.get("username") ?? "").trim().toLowerCase();
+  const password = String(formData.get("password") ?? "");
+  if (!USERNAME_RE.test(username)) {
+    throw new Error("Username must be 3-60 chars: lowercase letters, digits, . _ -");
+  }
+
+  const student = (await db.select().from(s.students).where(eq(s.students.id, studentId)).limit(1))[0];
+  if (!student) throw new Error("Student not found");
+
+  // New account requires a password; existing account may keep its password.
+  if ((!student.userId || password) && password.length < MIN_PASSWORD_LENGTH) {
+    throw new Error(`Password must be at least ${MIN_PASSWORD_LENGTH} characters`);
+  }
+  const passwordHash = password ? await bcrypt.hash(password, 10) : null;
+
+  try {
+    if (student.userId) {
+      await db
+        .update(s.users)
+        .set({ username, ...(passwordHash ? { passwordHash } : {}) })
+        .where(eq(s.users.id, student.userId));
+    } else {
+      const [account] = await db
+        .insert(s.users)
+        .values({ role: "student", name: student.fullName, username, passwordHash })
+        .returning({ id: s.users.id });
+      await db.update(s.students).set({ userId: account!.id }).where(eq(s.students.id, studentId));
+    }
+  } catch (err) {
+    const e = err as { code?: string; cause?: { code?: string } };
+    if (e.code === "23505" || e.cause?.code === "23505") {
+      throw new Error("That username is already taken");
+    }
+    throw err;
+  }
+
+  await writeAudit(db, {
+    actorType: "user",
+    actorId: admin.id,
+    action: "provisioned_student_account",
+    entityType: "student",
+    entityId: studentId,
+    details: { username },
+  });
+
+  revalidatePath(`/admin/students/${studentId}`);
 }

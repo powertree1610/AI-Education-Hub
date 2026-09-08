@@ -35,15 +35,15 @@ export default async function SignInPage({
         </div>
         {error ? (
           <p className="mt-3 rounded-md bg-red-50 px-3 py-2 text-sm text-red-700">
-            Wrong email or password. After 5 failed tries, sign-in locks for 5 minutes.
+            Wrong email/username or password. After 5 failed tries, sign-in locks for 5 minutes.
           </p>
         ) : null}
         <form action={credentialsSignInAction} className="mt-4 space-y-3">
           <label className="block text-sm font-medium text-slate-700">
-            Email
+            Email or username
             <input
-              name="email"
-              type="email"
+              name="identifier"
+              type="text"
               required
               autoComplete="username"
               className="mt-1 w-full rounded-md border border-slate-300 px-3 py-2 text-sm"

@@ -1,8 +1,14 @@
 import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
-import { desc, eq } from "drizzle-orm";
+import { desc, eq, inArray } from "drizzle-orm";
 import { schema as s } from "@platform/db";
 import { canUserAccessStudent } from "@platform/shared";
+import {
+  activateGoalAction,
+  addGoalUpdateAction,
+  declineGoalAction,
+  setGoalStatusAction,
+} from "@/actions/goals";
 import { createReferralAction } from "@/actions/safeguarding";
 import { ResultsSection } from "@/components/results-section";
 import { requireRoleOrRedirect } from "@/lib/guard";
@@ -79,6 +85,18 @@ export default async function TeacherStudentPage({
     .from(s.goals)
     .where(eq(s.goals.studentId, id))
     .orderBy(desc(s.goals.status));
+
+  // Latest progress note per goal (first row per goal_id, newest first).
+  const goalIds = goals.map((g) => g.id);
+  const updates = goalIds.length
+    ? await db
+        .select()
+        .from(s.goalUpdates)
+        .where(inArray(s.goalUpdates.goalId, goalIds))
+        .orderBy(desc(s.goalUpdates.updatedAt))
+    : [];
+  const latestUpdate = new Map<string, (typeof updates)[number]>();
+  for (const u of updates) if (!latestUpdate.has(u.goalId)) latestUpdate.set(u.goalId, u);
 
   const samples = await db
     .select({
@@ -211,27 +229,110 @@ export default async function TeacherStudentPage({
           <p className="mt-2 text-sm text-slate-500">No goals yet.</p>
         ) : (
           <ul className="mt-2 divide-y divide-slate-200 rounded-lg border border-slate-200 bg-white text-sm">
-            {goals.map((g) => (
-              <li key={g.id} className="flex items-center justify-between px-4 py-2">
-                <span>
-                  {g.title}{" "}
-                  <span className="text-xs text-slate-400">
-                    · {g.goalType} · asked by {g.requestedByRole}
-                  </span>
-                </span>
-                <span
-                  className={`text-xs ${
-                    g.status === "active" || g.status === "improving"
-                      ? "text-green-600"
-                      : g.status === "proposed"
-                        ? "text-amber-600"
-                        : "text-slate-400"
-                  }`}
-                >
-                  {g.status}
-                </span>
-              </li>
-            ))}
+            {goals.map((g) => {
+              const latest = latestUpdate.get(g.id);
+              return (
+                <li key={g.id} className="space-y-2 px-4 py-3">
+                  <div className="flex items-center justify-between">
+                    <span>
+                      {g.title}{" "}
+                      <span className="text-xs text-slate-400">
+                        · {g.goalType} · asked by {g.requestedByRole}
+                        {g.targetDate ? ` · target ${g.targetDate}` : ""}
+                      </span>
+                    </span>
+                    <span
+                      className={`text-xs ${
+                        g.status === "active" || g.status === "improving"
+                          ? "text-green-600"
+                          : g.status === "achieved"
+                            ? "text-teal-700 font-medium"
+                            : g.status === "proposed"
+                              ? "text-amber-600"
+                              : "text-slate-400"
+                      }`}
+                    >
+                      {g.status}
+                    </span>
+                  </div>
+
+                  {latest ? (
+                    <div className="text-xs text-slate-500">
+                      Latest: {latest.note}
+                      {latest.progress !== null ? (
+                        <span className="ml-2 inline-flex items-center gap-1 align-middle">
+                          <span className="inline-block h-1.5 w-24 overflow-hidden rounded-full bg-slate-100 align-middle">
+                            <span
+                              className="block h-full rounded-full bg-teal-600"
+                              style={{ width: `${latest.progress}%` }}
+                            />
+                          </span>
+                          {latest.progress}%
+                        </span>
+                      ) : null}
+                    </div>
+                  ) : null}
+
+                  {g.status === "proposed" ? (
+                    <div className="flex items-center gap-2">
+                      <form action={activateGoalAction} className="flex items-center gap-2">
+                        <input type="hidden" name="goalId" value={g.id} />
+                        <input
+                          type="date"
+                          name="targetDate"
+                          className="rounded border border-slate-300 px-2 py-1 text-xs"
+                          title="Target date (optional)"
+                        />
+                        <button className="rounded-md bg-teal-700 px-2 py-1 text-xs font-medium text-white hover:bg-teal-800">
+                          Activate
+                        </button>
+                      </form>
+                      <form action={declineGoalAction}>
+                        <input type="hidden" name="goalId" value={g.id} />
+                        <button className="rounded-md border border-slate-300 px-2 py-1 text-xs text-slate-500 hover:bg-slate-50">
+                          Decline
+                        </button>
+                      </form>
+                    </div>
+                  ) : null}
+
+                  {g.status === "active" || g.status === "improving" ? (
+                    <div className="flex flex-wrap items-center gap-2">
+                      {(g.status === "active"
+                        ? (["improving", "achieved", "discontinued"] as const)
+                        : (["achieved", "active", "discontinued"] as const)
+                      ).map((next) => (
+                        <form key={next} action={setGoalStatusAction}>
+                          <input type="hidden" name="goalId" value={g.id} />
+                          <input type="hidden" name="status" value={next} />
+                          <button className="rounded-md border border-slate-300 px-2 py-1 text-xs text-slate-600 hover:bg-slate-50">
+                            → {next}
+                          </button>
+                        </form>
+                      ))}
+                      <form action={addGoalUpdateAction} className="flex items-center gap-1">
+                        <input type="hidden" name="goalId" value={g.id} />
+                        <input
+                          name="note"
+                          required
+                          placeholder="progress note…"
+                          className="w-44 rounded border border-slate-300 px-2 py-1 text-xs"
+                        />
+                        <input
+                          name="progress"
+                          type="number"
+                          min={0}
+                          max={100}
+                          placeholder="%"
+                          className="w-14 rounded border border-slate-300 px-2 py-1 text-xs"
+                        />
+                        <button className="text-xs text-teal-700 hover:underline">save</button>
+                      </form>
+                    </div>
+                  ) : null}
+                </li>
+              );
+            })}
           </ul>
         )}
       </section>

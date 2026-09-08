@@ -230,10 +230,20 @@ export async function recordSafetyEvent(args: {
   }
 }
 
-/** Kid-friendly deflection shown instead of the agent when input is withheld. */
-export function deflectionMessage(preferredAiLanguage: string | null): string {
-  if (/malay|melayu/i.test(preferredAiLanguage ?? "")) {
-    return "Jom kita sembang benda lain, ya? Kalau ada apa-apa yang mengganggu, beritahu cikgu — cikgu ada di situ dan sedia membantu. 😊 Jom sambung aktiviti kita?";
+/** Kid-friendly deflection shown instead of the agent when input is withheld.
+ *  Supervised sessions point at the teacher in the room; Home Mode points at
+ *  a trusted adult. */
+export function deflectionMessage(
+  preferredAiLanguage: string | null,
+  supervisionMode: "supervised_centre" | "parent_present" | "unsupervised" = "supervised_centre",
+): string {
+  const bm = /malay|melayu/i.test(preferredAiLanguage ?? "");
+  if (supervisionMode === "supervised_centre") {
+    return bm
+      ? "Jom kita sembang benda lain, ya? Kalau ada apa-apa yang mengganggu, beritahu cikgu — cikgu ada di situ dan sedia membantu. 😊 Jom sambung aktiviti kita?"
+      : "Let's talk about something else, okay? If something is bothering you, please tell your teacher — they're right there and they care about you. 😊 Now, want to get back to our activity?";
   }
-  return "Let's talk about something else, okay? If something is bothering you, please tell your teacher — they're right there and they care about you. 😊 Now, want to get back to our activity?";
+  return bm
+    ? "Jom kita sembang benda lain, ya? Kalau ada apa-apa yang mengganggu, beritahu orang dewasa yang kamu percaya — macam ibu, ayah atau cikgu. 😊 Jom sambung aktiviti kita?"
+    : "Let's talk about something else, okay? If something is bothering you, please tell a grown-up you trust — like your mum, dad or teacher. They care about you. 😊 Now, want to get back to our activity?";
 }

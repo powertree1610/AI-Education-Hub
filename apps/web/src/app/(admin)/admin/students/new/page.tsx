@@ -1,13 +1,21 @@
+import { asc, eq } from "drizzle-orm";
+import { schema as s } from "@platform/db";
 import { CONSENT_TYPES } from "@platform/shared";
 import { createStudentAction } from "@/actions/students";
 import { CONSENT_LABELS } from "@/lib/consent-labels";
+import { getDb } from "@/lib/db";
 
 export const dynamic = "force-dynamic";
 
 const field = "mt-1 w-full rounded-md border border-slate-300 px-3 py-2 text-sm";
 const label = "block text-sm font-medium text-slate-700";
 
-export default function NewStudentPage() {
+export default async function NewStudentPage() {
+  const schools = await getDb()
+    .select({ id: s.schools.id, name: s.schools.name })
+    .from(s.schools)
+    .where(eq(s.schools.isActive, true))
+    .orderBy(asc(s.schools.name));
   return (
     <div className="max-w-2xl">
       <h1 className="text-xl font-semibold">Register student</h1>
@@ -46,8 +54,19 @@ export default function NewStudentPage() {
               <input name="programme" placeholder="Primary Tuition + Childcare" className={field} />
             </label>
             <label className={label}>
-              School name
-              <input name="schoolName" className={field} />
+              School
+              <select name="schoolId" className={field}>
+                <option value="">—</option>
+                {schools.map((sc) => (
+                  <option key={sc.id} value={sc.id}>
+                    {sc.name}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label className={label}>
+              …or add a new school
+              <input name="newSchoolName" placeholder="type its name" className={field} />
             </label>
             <label className={label}>
               School grade
