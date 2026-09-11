@@ -1,6 +1,51 @@
 "use client";
 
 import { useRef, useState } from "react";
+import Markdown from "react-markdown";
+
+/** Assistant replies are markdown (the models bold/list liberally) — render
+ *  them properly instead of showing raw ** and #. User text stays plain. */
+function AssistantMarkdown({ text }: { text: string }) {
+  return (
+    <Markdown
+      components={{
+        p: ({ children }) => <p className="my-1 first:mt-0 last:mb-0">{children}</p>,
+        ul: ({ children }) => <ul className="my-1 list-disc space-y-0.5 pl-5">{children}</ul>,
+        ol: ({ children }) => <ol className="my-1 list-decimal space-y-0.5 pl-5">{children}</ol>,
+        li: ({ children }) => <li className="[&>p]:my-0">{children}</li>,
+        strong: ({ children }) => <strong className="font-semibold">{children}</strong>,
+        h1: ({ children }) => <p className="mb-1 mt-2 font-bold first:mt-0">{children}</p>,
+        h2: ({ children }) => <p className="mb-1 mt-2 font-bold first:mt-0">{children}</p>,
+        h3: ({ children }) => <p className="mb-1 mt-2 font-semibold first:mt-0">{children}</p>,
+        h4: ({ children }) => <p className="mb-1 mt-2 font-semibold first:mt-0">{children}</p>,
+        code: ({ children }) => (
+          <code className="rounded bg-black/10 px-1 py-0.5 font-mono text-[0.9em]">{children}</code>
+        ),
+        pre: ({ children }) => (
+          <pre className="my-1 overflow-x-auto rounded-md bg-black/10 p-2 text-[0.9em]">{children}</pre>
+        ),
+        blockquote: ({ children }) => (
+          <blockquote className="my-1 border-l-2 border-current/30 pl-2 opacity-90">{children}</blockquote>
+        ),
+        a: ({ children, href }) => (
+          <a href={href} target="_blank" rel="noreferrer" className="underline">
+            {children}
+          </a>
+        ),
+        hr: () => <hr className="my-2 border-current/20" />,
+        table: ({ children }) => (
+          <div className="my-1 overflow-x-auto">
+            <table className="border-collapse text-[0.95em]">{children}</table>
+          </div>
+        ),
+        th: ({ children }) => <th className="border border-current/20 px-2 py-1 text-left">{children}</th>,
+        td: ({ children }) => <td className="border border-current/20 px-2 py-1">{children}</td>,
+      }}
+    >
+      {text}
+    </Markdown>
+  );
+}
 
 export interface TurnUsage {
   model: string;
@@ -70,9 +115,11 @@ export function ChatWindow({
   const userBubble = kid
     ? "max-w-[80%] whitespace-pre-wrap rounded-2xl rounded-br-md bg-amber-400 px-4 py-2.5 text-base font-medium text-amber-950"
     : "max-w-[80%] whitespace-pre-wrap rounded-lg bg-teal-700 px-3 py-2 text-sm text-white";
+  // No pre-wrap here — assistant text renders as markdown, which handles
+  // its own paragraph breaks (pre-wrap would double every blank line).
   const botBubble = kid
-    ? "max-w-[80%] whitespace-pre-wrap rounded-2xl rounded-bl-md bg-teal-50 px-4 py-2.5 text-base text-teal-950"
-    : "max-w-[80%] whitespace-pre-wrap rounded-lg bg-slate-100 px-3 py-2 text-sm";
+    ? "max-w-[80%] rounded-2xl rounded-bl-md bg-teal-50 px-4 py-2.5 text-base text-teal-950"
+    : "max-w-[80%] rounded-lg bg-slate-100 px-3 py-2 text-sm";
   const [messages, setMessages] = useState<DisplayMessage[]>(initialMessages);
   const [input, setInput] = useState("");
   const [busy, setBusy] = useState(false);
@@ -215,7 +262,9 @@ export function ChatWindow({
             </div>
           ) : (
             <div key={i} className={msg.role === "user" ? "flex justify-end" : "flex"}>
-              <div className={msg.role === "user" ? userBubble : botBubble}>{msg.text}</div>
+              <div className={msg.role === "user" ? userBubble : botBubble}>
+                {msg.role === "user" ? msg.text : <AssistantMarkdown text={msg.text} />}
+              </div>
             </div>
           ),
         )}

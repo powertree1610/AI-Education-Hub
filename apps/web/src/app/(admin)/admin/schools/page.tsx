@@ -35,59 +35,80 @@ export default async function SchoolsPage() {
         </p>
       </div>
 
+      {/* Each row's inputs belong to a <form> rendered after the table (the
+          HTML `form` attribute) — real <td> cells keep the columns aligned
+          under their headers. */}
       <table className="w-full rounded-lg border border-slate-200 bg-white text-sm">
         <thead>
           <tr className="border-b border-slate-200 text-left text-slate-500">
-            <th className={cell}>Name</th>
-            <th className={cell}>Type</th>
-            <th className={cell}>Curriculum</th>
-            <th className={cell}>Students</th>
-            <th className={cell}>Status</th>
+            <th className={`${cell} font-medium`}>Name</th>
+            <th className={`${cell} font-medium`}>Type</th>
+            <th className={`${cell} font-medium`}>Curriculum</th>
+            <th className={`${cell} font-medium`}>Students</th>
+            <th className={`${cell} font-medium`}>Status</th>
             <th className={cell} />
           </tr>
         </thead>
         <tbody>
-          {schools.map((sc) => (
-            <tr key={sc.id} className="border-b border-slate-100 align-middle last:border-0">
-              <td colSpan={6} className="p-0">
-                <form action={updateSchoolAction} className="flex w-full items-center gap-2 px-4 py-2">
-                  <input type="hidden" name="schoolId" value={sc.id} />
-                  <input name="name" defaultValue={sc.name} required className={`${input} w-56`} />
+          {schools.map((sc) => {
+            const formId = `school-${sc.id}`;
+            return (
+              <tr key={sc.id} className="border-b border-slate-100 align-middle last:border-0">
+                <td className={cell}>
+                  <input form={formId} name="name" defaultValue={sc.name} required className={`${input} w-full min-w-40`} />
+                </td>
+                <td className={cell}>
                   <input
+                    form={formId}
                     name="schoolType"
                     defaultValue={sc.schoolType ?? ""}
-                    placeholder="type (SK/SJKC…)"
-                    className={`${input} w-28`}
+                    placeholder="SK / SJKC…"
+                    className={`${input} w-full min-w-24`}
                   />
+                </td>
+                <td className={cell}>
                   <input
+                    form={formId}
                     name="curriculum"
                     defaultValue={sc.curriculum ?? ""}
-                    placeholder="curriculum"
-                    className={`${input} w-24`}
+                    placeholder="KSSR"
+                    className={`${input} w-full min-w-20`}
                   />
-                  <span className="w-16 text-xs text-slate-400">{sc.studentCount} student{sc.studentCount === 1 ? "" : "s"}</span>
-                  <span className={`text-xs ${sc.isActive ? "text-green-600" : "text-red-600"}`}>
+                </td>
+                <td className={`${cell} whitespace-nowrap text-xs text-slate-400`}>
+                  {sc.studentCount} student{sc.studentCount === 1 ? "" : "s"}
+                </td>
+                <td className={cell}>
+                  <span
+                    className={`rounded-full px-2 py-0.5 text-xs ${
+                      sc.isActive ? "bg-green-50 text-green-700" : "bg-red-50 text-red-600"
+                    }`}
+                  >
                     {sc.isActive ? "active" : "inactive"}
                   </span>
+                </td>
+                <td className={`${cell} whitespace-nowrap text-right`}>
                   {/* Only the clicked button's isActive value is submitted. */}
                   <button
+                    form={formId}
                     name="isActive"
                     value={sc.isActive ? "true" : "false"}
-                    className="text-xs text-teal-700 hover:underline"
+                    className="text-xs font-medium text-teal-700 hover:underline"
                   >
                     save
                   </button>
                   <button
+                    form={formId}
                     name="isActive"
                     value={sc.isActive ? "false" : "true"}
-                    className="ml-auto text-xs text-slate-500 hover:underline"
+                    className="ml-3 text-xs text-slate-500 hover:underline"
                   >
                     {sc.isActive ? "deactivate" : "reactivate"}
                   </button>
-                </form>
-              </td>
-            </tr>
-          ))}
+                </td>
+              </tr>
+            );
+          })}
           {schools.length === 0 ? (
             <tr>
               <td className={`${cell} text-slate-400`} colSpan={6}>
@@ -97,6 +118,11 @@ export default async function SchoolsPage() {
           ) : null}
         </tbody>
       </table>
+      {schools.map((sc) => (
+        <form key={sc.id} id={`school-${sc.id}`} action={updateSchoolAction} className="hidden">
+          <input type="hidden" name="schoolId" value={sc.id} />
+        </form>
+      ))}
 
       <form
         action={createSchoolAction}

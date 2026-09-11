@@ -55,18 +55,22 @@ export default async function NewStudentPage() {
             </label>
             <label className={label}>
               School
-              <select name="schoolId" className={field}>
-                <option value="">—</option>
+              <input
+                name="schoolName"
+                list="school-options"
+                placeholder="pick or type a new one"
+                autoComplete="off"
+                className={field}
+              />
+              <datalist id="school-options">
                 {schools.map((sc) => (
-                  <option key={sc.id} value={sc.id}>
-                    {sc.name}
-                  </option>
+                  <option key={sc.id} value={sc.name} />
                 ))}
-              </select>
-            </label>
-            <label className={label}>
-              …or add a new school
-              <input name="newSchoolName" placeholder="type its name" className={field} />
+              </datalist>
+              <span className="mt-1 block text-xs font-normal text-slate-400">
+                Start typing to pick an existing school — an unknown name is added to the master
+                list automatically.
+              </span>
             </label>
             <label className={label}>
               School grade

@@ -6,6 +6,7 @@ import { canUserAccessStudent, parseLocalUrl } from "@platform/shared";
 import {
   activateGoalAction,
   addGoalUpdateAction,
+  createGoalAction,
   declineGoalAction,
   setGoalStatusAction,
 } from "@/actions/goals";
@@ -178,6 +179,15 @@ export default async function TeacherStudentPage({
     .where(eq(s.formSubmissions.studentId, id))
     .orderBy(desc(s.formSubmissions.submittedAt));
 
+  const baselineDone = submissions.some((f) => f.formType === "teacher_baseline");
+  const interviewDone = submissions.some((f) => f.formType === "student_interview");
+  const reportCount = (
+    await db
+      .select({ id: s.progressReports.id })
+      .from(s.progressReports)
+      .where(eq(s.progressReports.studentId, id))
+  ).length;
+
   return (
     <div className="max-w-3xl space-y-8">
       <div className="flex items-start justify-between">
@@ -191,31 +201,44 @@ export default async function TeacherStudentPage({
             {student.aiAccessLevel}
           </p>
         </div>
-        <div className="flex gap-2 text-sm">
-          <Link
-            href={`/teacher/students/${id}/timeline`}
-            className="rounded-md border border-slate-300 px-3 py-1.5 hover:bg-slate-50"
-          >
-            Timeline
-          </Link>
-          <Link
-            href={`/teacher/students/${id}/baseline`}
-            className="rounded-md border border-slate-300 px-3 py-1.5 hover:bg-slate-50"
-          >
-            Baseline form
-          </Link>
-          <Link
-            href={`/teacher/students/${id}/interview`}
-            className="rounded-md border border-slate-300 px-3 py-1.5 hover:bg-slate-50"
-          >
-            Student interview
-          </Link>
-          <Link
-            href={`/teacher/students/${id}/reports`}
-            className="rounded-md border border-slate-300 px-3 py-1.5 hover:bg-slate-50"
-          >
-            Reports
-          </Link>
+        <div className="flex flex-wrap items-center justify-end gap-1.5 text-sm">
+          {[
+            { href: `/teacher/students/${id}/timeline`, icon: "🕒", label: "Timeline", badge: null },
+            {
+              href: `/teacher/students/${id}/baseline`,
+              icon: "📝",
+              label: "Baseline",
+              badge: baselineDone ? ("done" as const) : ("todo" as const),
+            },
+            {
+              href: `/teacher/students/${id}/interview`,
+              icon: "🎤",
+              label: "Interview",
+              badge: interviewDone ? ("done" as const) : ("todo" as const),
+            },
+            {
+              href: `/teacher/students/${id}/reports`,
+              icon: "📄",
+              label: reportCount > 0 ? `Reports (${reportCount})` : "Reports",
+              badge: reportCount > 0 ? ("done" as const) : ("todo" as const),
+            },
+          ].map((b) => (
+            <Link
+              key={b.label}
+              href={b.href}
+              className="inline-flex items-center gap-1.5 whitespace-nowrap rounded-full border border-slate-300 bg-white px-3 py-1.5 shadow-sm transition hover:bg-slate-50"
+            >
+              <span aria-hidden>{b.icon}</span>
+              {b.label}
+              {b.badge === "done" ? (
+                <span className="text-teal-600" title="Completed">
+                  ✓
+                </span>
+              ) : b.badge === "todo" ? (
+                <span className="h-2 w-2 rounded-full bg-amber-400" title="Not done yet" />
+              ) : null}
+            </Link>
+          ))}
         </div>
       </div>
 
@@ -401,6 +424,44 @@ export default async function TeacherStudentPage({
             })}
           </ul>
         )}
+
+        <details className="mt-3 rounded-lg border border-slate-200 bg-white">
+          <summary className="cursor-pointer px-4 py-2 text-sm font-medium text-slate-600">
+            Add a goal
+          </summary>
+          <form action={createGoalAction} className="flex flex-wrap items-center gap-2 border-t border-slate-100 p-4 text-sm">
+            <input type="hidden" name="studentId" value={id} />
+            <input
+              name="title"
+              required
+              placeholder="Goal title (e.g. Read one BM storybook a week)"
+              className="w-72 rounded-md border border-slate-300 px-3 py-1.5"
+            />
+            <select name="goalType" className="rounded-md border border-slate-300 px-2 py-1.5">
+              <option value="academic">academic</option>
+              <option value="personal">personal</option>
+            </select>
+            <select name="subjectId" className="rounded-md border border-slate-300 px-2 py-1.5">
+              <option value="">No subject</option>
+              {subjects.map((sub) => (
+                <option key={sub.id} value={sub.id}>
+                  {sub.name}
+                </option>
+              ))}
+            </select>
+            <label className="flex items-center gap-1 text-slate-500">
+              target
+              <input type="date" name="targetDate" className="rounded-md border border-slate-300 px-2 py-1" />
+            </label>
+            <button className="rounded-md bg-teal-700 px-3 py-1.5 font-medium text-white hover:bg-teal-800">
+              Add (starts active)
+            </button>
+            <p className="w-full text-xs text-slate-400">
+              Goals you add start active — parents&apos; and the AI&apos;s suggestions arrive as
+              proposals for you to activate or decline above.
+            </p>
+          </form>
+        </details>
       </section>
 
       <section>

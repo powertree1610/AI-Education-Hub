@@ -40,11 +40,13 @@ export async function createStudentAction(formData: FormData) {
   const guardianName = str(formData, "guardianName");
   const grantedTypes = CONSENT_TYPES.filter((t) => formData.get(`consent_${t}`) === "on");
 
-  // Schools master (v5): pick from the list or create by name; the legacy
-  // free-text school_name column is no longer written for new students.
-  const newSchoolName = str(formData, "newSchoolName");
-  const schoolId = newSchoolName
-    ? await schoolIdByName(newSchoolName)
+  // Schools master (v5, combo input since v7.2): one name field backed by a
+  // datalist — an existing name resolves case-insensitively, an unknown one
+  // is created once. (newSchoolName/schoolId kept for older forms.) The
+  // legacy free-text school_name column is no longer written.
+  const schoolName = str(formData, "schoolName") || str(formData, "newSchoolName");
+  const schoolId = schoolName
+    ? await schoolIdByName(schoolName)
     : str(formData, "schoolId") || null;
 
   const studentId = await db.transaction(async (tx) => {

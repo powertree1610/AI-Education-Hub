@@ -40,6 +40,51 @@ async function loadGoalForStaff(user: AppUser, goalId: string) {
   return goal;
 }
 
+/**
+ * Teacher/admin creates a goal directly (v7.2). Born ACTIVE — the teacher is
+ * the lifecycle owner, so propose+activate in one act (same convention as
+ * goal-from-material). Parents still propose; the AI still suggests.
+ */
+export async function createGoalAction(formData: FormData) {
+  const user = await requireAppUser("teacher", "admin");
+  const studentId = String(formData.get("studentId") ?? "");
+  const title = String(formData.get("title") ?? "").trim();
+  if (!studentId || !title) throw new Error("Student and title are required");
+  const goalType = String(formData.get("goalType") ?? "") === "personal" ? "personal" : "academic";
+  const subjectId = String(formData.get("subjectId") ?? "") || null;
+  const targetDate = String(formData.get("targetDate") ?? "") || null;
+
+  const db = getDb();
+  if (user.role === "teacher") {
+    const allowed = await canUserAccessStudent(db, { userId: user.id, role: "teacher", studentId });
+    if (!allowed) throw new Error("You are not assigned to this student");
+  }
+
+  const [goal] = await db
+    .insert(s.goals)
+    .values({
+      studentId,
+      goalType,
+      subjectId,
+      title: title.slice(0, 300),
+      requestedByRole: "teacher",
+      requestedByUser: user.id,
+      status: "active",
+      startDate: new Date().toISOString().slice(0, 10),
+      targetDate,
+    })
+    .returning({ id: s.goals.id });
+  await writeAudit(db, {
+    actorType: "user",
+    actorId: user.id,
+    action: "goal_created",
+    entityType: "goal",
+    entityId: goal!.id,
+    details: { studentId, status: "active" },
+  });
+  revalidatePath(`/teacher/students/${studentId}`);
+}
+
 export async function activateGoalAction(formData: FormData) {
   const user = await requireAppUser("teacher", "admin");
   const goalId = String(formData.get("goalId") ?? "");
