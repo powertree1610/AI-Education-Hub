@@ -11,6 +11,7 @@ dist/
 .next/
 out/
 *.tsbuildinfo
+deploy/out/
 
 # uploaded files (local disk storage)
 uploads/

@@ -1,117 +1,141 @@
 # Deployment — Windows Server + IIS
 
-Two Node processes behind an IIS reverse proxy:
+Two IIS sites, each launching one Node process through **HttpPlatformHandler**.
+IIS is the process manager: it starts node with the site, restarts it on failure,
+and proxies the site's binding to the process. No WinSW, no ARR, no URL Rewrite.
 
 ```
-IIS (ARR reverse proxy, HTTPS) ──► Next.js standalone server  (:3000)
-                                   MCP server                 (:6710, localhost-bound)
+student-ai-web  (IIS, :3330 / HTTPS)  ──HttpPlatformHandler──►  node apps\web\server.js   (Next.js standalone)
+                                                                        │  MCP_URL=http://127.0.0.1:3331/mcp
+student-ai-mcp  (IIS, 127.0.0.1:3331)  ──HttpPlatformHandler──►  node index.js            (MCP server bundle)
 ```
 
-## 1. Build
+The MCP site must stay bound to `127.0.0.1` only. It is an internal dependency of the
+web process, never a public endpoint.
 
-On the build machine (Node 22 LTS + pnpm):
+## 1. Server prerequisites (once)
 
-```bash
-pnpm install
-pnpm --filter @platform/mcp-server build     # → apps/mcp-server/dist
-pnpm --filter @platform/web build            # → apps/web/.next/standalone
-```
+- Node 22 LTS, git, pnpm (`corepack enable` or `npm i -g pnpm@10.29.3`).
+- IIS with **HttpPlatformHandler** — check IIS Manager → server → Modules for
+  `httpPlatformHandler`; if absent install it from
+  <https://www.iis.net/downloads/microsoft/httpplatformhandler>.
+- IIS feature **Application Initialization** (Server Manager → Web Server → Application
+  Development) so node starts with IIS instead of on the first visitor.
+- The two sites created in IIS Manager (already done):
+  - `student-ai-web` → `C:\Web\student-ai-web`, http `*:3330`
+  - `student-ai-mcp` → `C:\Web\student-ai-mcp`, http `*:3331`
+- IIS Manager settings, for **each** of the two app pools (`student-ai-web`,
+  `student-ai-mcp` → Basic Settings / Advanced Settings):
+  - .NET CLR version: **No Managed Code**
+  - Start Mode: **AlwaysRunning**
+  - Process Model → Idle Time-out (minutes): **0**
+  - Recycling → Regular Time Interval (minutes): **0**, no Specific Times
+  - (Idle/recycle matter: the web process holds live kiosk conversations in memory;
+    an IIS recycle mid-session loses them.)
+- For each site → Advanced Settings → Preload Enabled: **True** (needs the
+  Application Initialization feature), so node boots with IIS.
+- `student-ai-mcp` → Bindings → edit the http binding: IP address **127.0.0.1**,
+  port 3331. It must not be reachable from the LAN.
+- Data folder for uploads, e.g. `C:\Web\student-ai-data\uploads`, writable by both app
+  pool identities (node runs as the app pool user):
 
-Notes:
-- The repo's `.npmrc` sets `node-linker=hoisted` — required on Windows so the
-  standalone output tracing works without the symlink privilege (Developer Mode).
-- Copy to the server:
-  - `apps/web/.next/standalone/` (self-contained; entry `apps/web/server.js` inside it)
-  - `apps/web/.next/static/` → into `standalone/apps/web/.next/static`
-  - `apps/mcp-server/dist/` + `node_modules` (or run `pnpm deploy` for a pruned copy)
-  - `packages/db/migrations/` (for future migrations)
+  ```powershell
+  New-Item -ItemType Directory -Force C:\Web\student-ai-data\uploads
+  icacls C:\Web\student-ai-data\uploads /grant "IIS AppPool\student-ai-web:(OI)(CI)M" "IIS AppPool\student-ai-mcp:(OI)(CI)M"
+  icacls C:\Web\student-ai-web /grant "IIS AppPool\student-ai-web:(OI)(CI)M"
+  icacls C:\Web\student-ai-mcp /grant "IIS AppPool\student-ai-mcp:(OI)(CI)M"
+  ```
 
-## 2. Environment
+  (Modify on the site folders is needed so node can write `logs\`.)
 
-Production env vars come from the **service configuration** (WinSW/NSSM), NOT `.env`
-(the standalone server does not execute `next.config.ts` side effects):
-
-- `DATABASE_URL_APP` (web), `DATABASE_URL_AI` (mcp) — pooled Neon endpoints, `sslmode=require`
-- `AI_API_SERVER_URL`, `LICENSE_KEY`
-- `DEFAULT_MODEL`, `OCR_MODEL` (fallbacks; license values win)
-- `AUTH_SECRET` — long random string; enables self-hosted credentials auth (the default).
-  (Clerk keys instead would switch to Clerk mode — dormant option.)
-- `MCP_URL=http://localhost:6710/mcp`, `MCP_SHARED_SECRET` (long random string, same on both services)
-- `UPLOAD_DIR` — **absolute path** on a backed-up data volume
-- `TRANSCRIPT_RETENTION_DAYS`
-- `JOB_SECRET` — long random string for the `/api/jobs/*` routes (Task Scheduler)
-- `PORT=3000` (Next standalone reads PORT), `MCP_PORT=6710`
-
-## 3. Windows services (WinSW example)
-
-Install [WinSW](https://github.com/winsw/winsw), one XML per service:
-
-```xml
-<!-- student-web.xml -->
-<service>
-  <id>student-web</id>
-  <name>Student Platform Web</name>
-  <executable>C:\Program Files\nodejs\node.exe</executable>
-  <arguments>C:\apps\student-platform\standalone\apps\web\server.js</arguments>
-  <env name="PORT" value="3000"/>
-  <!-- ...all env vars above... -->
-  <onfailure action="restart" delay="10 sec"/>
-  <log mode="roll-by-size"/>
-</service>
-```
-
-```xml
-<!-- student-mcp.xml -->
-<service>
-  <id>student-mcp</id>
-  <name>Student Platform MCP</name>
-  <executable>C:\Program Files\nodejs\node.exe</executable>
-  <arguments>C:\apps\student-platform\mcp\dist\index.js</arguments>
-  <env name="MCP_PORT" value="6710"/>
-  <!-- DATABASE_URL_AI, MCP_SHARED_SECRET -->
-  <onfailure action="restart" delay="10 sec"/>
-</service>
-```
-
-`winsw install student-web.xml && winsw start student-web` (same for mcp). Both must
-survive a reboot (services default to Automatic start).
-
-## 4. IIS reverse proxy (ARR)
-
-1. Install **URL Rewrite** + **Application Request Routing**; enable proxy in ARR settings.
-2. Site → URL Rewrite → reverse-proxy rule to `http://localhost:3000/{R:1}`.
-3. **SSE streaming (critical):** chat responses are `text/event-stream`. ARR buffers by
-   default and the chat will look frozen. Set the proxy `responseBufferLimit` to 0:
+## 2. Runtime config (once, then whenever a value changes)
 
 ```powershell
-& "$env:windir\system32\inetsrv\appcmd.exe" set config "Default Web Site" `
-  -section:system.webServer/rewrite/rules `
-  "/[name='ReverseProxy'].serverVariables.[name='HTTP_ACCEPT_ENCODING'].value:" 
-# and in applicationHost.config set the ARR proxy: <proxy ... responseBufferLimit="0" />
+Copy-Item deploy\env.web.example deploy\.env.web
+Copy-Item deploy\env.mcp.example deploy\.env.mcp
 ```
 
-   (Verify by watching a staff chat stream token-by-token through the IIS hostname —
-   do this FIRST, before anything else, it is the most common failure.)
-4. Do **not** expose :6710 through IIS — the MCP server is localhost-only, spoken to
-   by the web process.
-5. HTTPS binding with your certificate; HTTP → HTTPS redirect.
+Fill both in (they are gitignored). Key points:
+
+- `DATABASE_URL_APP` (web) and `DATABASE_URL_AI` (mcp) — pooled Neon endpoints, `sslmode=require`.
+- `AUTH_SECRET` — long random string; enables self-hosted credentials auth.
+- `MCP_SHARED_SECRET` — long random string, **identical in both files**.
+- `MCP_URL=http://127.0.0.1:3331/mcp` — the MCP site's binding.
+- `UPLOAD_DIR` — the absolute data path above, same in both files.
+- `JOB_SECRET` — for the Task Scheduler jobs (§5).
+- Do **not** set `PORT`, `HOSTNAME` or `MCP_PORT` — IIS supplies them via `web.config`.
+
+The build script copies these into the site folders as `apps\web\.env` (web) and
+`.env` (mcp). Both processes read them at startup; IIS-supplied variables take
+precedence. To change a value later, edit the copy in the site folder and restart
+that site.
+
+## 3. Build & deploy (every version)
+
+1. Bump `APP_VERSION` in `apps/web/src/lib/version.ts` (starts at `0.1`; shown
+   bottom-left on every screen), commit, tag (`git tag v0.1`).
+2. Build on your machine:
+
+   ```powershell
+   .\deploy\build-deploy.ps1
+   ```
+
+   The script: `pnpm install --frozen-lockfile` → builds the MCP bundle (typecheck +
+   esbuild, one self-contained `index.js`) → builds the Next standalone output →
+   stages `deploy\out\student-ai-web\` and `deploy\out\student-ai-mcp\` with
+   `web.config` (from `deploy\templates`) and the `.env` files → zips both.
+
+   `web.config` contains **absolute server paths**. Defaults: `C:\Web\student-ai-web`,
+   `C:\Web\student-ai-mcp`, node at `C:\Program Files\nodejs\node.exe`. If the server
+   differs, pass `-SiteDirWeb`, `-SiteDirMcp`, `-NodeExe` (run `where node` on the
+   server; the app pool identity must be able to read that path, so a per-user nvm
+   install under `C:\Users\...` will not do).
+3. Copy to the server (RDP): stop both sites in IIS Manager, then copy the
+   **contents** of `deploy\out\student-ai-web\` into `C:\Web\student-ai-web\` and of
+   `deploy\out\student-ai-mcp\` into `C:\Web\student-ai-mcp\` (or extract the two
+   zips there), replacing existing files. Delete the old `node_modules\` in the web
+   folder first when upgrading, so stale packages do not linger. Start both sites.
+4. Verify (§6).
+
+Folder layout produced:
+
+```
+C:\Web\student-ai-web\               C:\Web\student-ai-mcp\
+  web.config                           web.config
+  VERSION.txt                          VERSION.txt
+  logs\                 <- node output  logs\
+  apps\web\server.js                   index.js  (+ .map)
+  apps\web\.env            <- config   .env      <- config
+  apps\web\.next\static\
+  node_modules\  packages\  package.json
+```
+
+Verified on the build machine: both folders start under plain `node` exactly as IIS
+launches them (only `PORT`/`MCP_PORT` from outside, everything else from the `.env`
+files), the MCP bundle needs no `node_modules`, and the web build serves its static
+assets from the copied folder.
+
+## 4. Public access / HTTPS
+
+Port 3330 is fine for LAN testing. For real users add an **https** binding on the
+`student-ai-web` site itself (hostname + certificate, port 443) — HttpPlatformHandler
+handles the proxying, nothing else is needed. If instead you front it with an existing
+ARR reverse-proxy site, set that proxy's response buffer threshold to 0, otherwise the
+streamed chat (`text/event-stream`) appears frozen until 256 KB has accumulated.
 
 ## 5. Scheduled jobs (Windows Task Scheduler)
 
-Two tasks:
-
-1. **Weekly synthesis** — Sundays 02:00, action `Program: curl.exe`, arguments:
+1. **Weekly synthesis** — Sundays 02:00, `Program: curl.exe`, arguments:
 
    ```
-   -s -X POST -H "x-job-secret: <JOB_SECRET>" http://localhost:3000/api/jobs/weekly-synthesis
+   -s -X POST -H "x-job-secret: <JOB_SECRET>" http://localhost:3330/api/jobs/weekly-synthesis
    ```
 
-   Runs one consolidated AI pass per student active that week; proposals land in
-   the teacher review queue tagged with a `synthesis_batch_id`. Allow up to 10
-   minutes (`maxDuration=600` on the route).
+   One consolidated AI pass per student active that week; proposals land in the teacher
+   review queue tagged with a `synthesis_batch_id`. Allow up to 10 minutes.
 
-2. **Transcript purge** — daily 03:00, working directory = the repo checkout
-   (needs `DATABASE_URL` in env or the repo `.env`):
+2. **Transcript purge** — daily 03:00, working directory = the repo checkout (needs
+   the owner `DATABASE_URL` in the repo `.env`):
 
    ```
    pnpm --filter @platform/db purge-transcripts
@@ -119,25 +143,30 @@ Two tasks:
 
    Deletes `session_transcripts` rows past `expires_at` and writes an audit row.
 
-(The per-session observation pass needs no scheduling — it runs automatically
-when a teacher ends a kiosk session.)
-
 ## 6. Post-deploy checklist
 
+- Both sites Started; `logs\` in each folder shows node listening (a new file per start).
+- `http://<server>:3330/sign-in` loads and shows the new version bottom-left.
+- Staff chat streams token-by-token (not all at once after a pause).
+- Kiosk reachable from a LAN device; upload → preview a JPG and a PDF.
 - `pnpm check:db` against production (from a workstation) — grants still hold.
-- Staff chat streams through IIS; kiosk reachable from a LAN device.
-- Upload → preview a JPG and a PDF.
-- `UPLOAD_DIR` included in backups; Neon PITR enabled.
-- Auth: set `AUTH_SECRET`, bootstrap the first admin password with
+- First deploy only: bootstrap the admin password
   `pnpm --filter @platform/db exec tsx scripts/set-password.ts <email> <password>`,
-  then create staff + set passwords at `/admin/users`.
+  then create staff at `/admin/users`.
+- `UPLOAD_DIR` included in backups; Neon PITR enabled.
 
-## Known gaps (as of v2)
+## 7. Troubleshooting
 
-- Upload malware/NSFW scanning stubbed (`upload_scans` records what was checked).
-- Clerk deactivation does not auto-sync without a public webhook URL — deactivate in
-  `core.users` manually as well.
-- Kiosk lock-down is soft (route chrome only); PIN-to-exit is a fast follow.
-- Parent portal, safeguarding UI, safety-event classifiers: later versions.
-- Kiosk running context is in-memory — a web-service restart mid-session loses the
-  unfinished conversation (the session row and activities survive).
+- **502.3 / 502.5 from IIS** — node failed to start or IIS could not reach it. Read
+  the newest file in the site's `logs\`. No file at all → the app pool identity cannot
+  read `node.exe` or write `logs\` (§1 icacls), or `httpPlatformHandler` is not
+  installed. Node listening but still 502 → remove the `HOSTNAME` line from the web
+  `web.config` (see the comment there) and restart the site.
+- **Sign-in page shows dev-login / no password box** — `AUTH_SECRET` missing:
+  `apps\web\.env` was not copied or is empty.
+- **Chat says the AI is unavailable** — web cannot reach MCP: check `MCP_URL` port
+  matches the MCP site binding, `MCP_SHARED_SECRET` identical in both `.env` files,
+  MCP site started (`http://127.0.0.1:3331/health` on the server returns `{"ok":true}`).
+- **Chat text arrives in one lump** — a proxy in front is buffering (§4).
+- **Kiosk conversation lost mid-session** — the web app pool recycled; re-check the
+  app pool settings in §1 (idle timeout 0, no periodic recycle).

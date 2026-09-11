@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { ClerkProvider } from "@clerk/nextjs";
 import { Baloo_2, Figtree } from "next/font/google";
 import { authMode } from "@/lib/env";
+import { VersionBadge } from "@/components/version-badge";
 import "./globals.css";
 
 const figtree = Figtree({ subsets: ["latin"], variable: "--font-figtree" });
@@ -17,7 +18,10 @@ export default function RootLayout({
 }: Readonly<{ children: React.ReactNode }>) {
   const body = (
     <html lang="en" className={`${figtree.variable} ${baloo.variable}`}>
-      <body className="antialiased">{children}</body>
+      <body className="antialiased">
+        {children}
+        <VersionBadge />
+      </body>
     </html>
   );
   return authMode() === "clerk" ? <ClerkProvider>{body}</ClerkProvider> : body;
