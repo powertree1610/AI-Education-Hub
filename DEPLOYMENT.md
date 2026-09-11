@@ -77,8 +77,14 @@ that site.
 2. Build on your machine:
 
    ```powershell
-   .\deploy\build-deploy.ps1
+   pnpm build:deploy
+   # options pass straight through, e.g.
+   pnpm build:deploy -SkipInstall
+   pnpm build:deploy -NodeExe "C:\nvm4w\nodejs\node.exe" -SiteDirWeb "D:\Web\student-ai-web"
    ```
+
+   (`pnpm build:deploy` runs `deploy\build-deploy.ps1` with the execution policy
+   bypassed, so no PowerShell setup is needed.)
 
    The script: `pnpm install --frozen-lockfile` → builds the MCP bundle (typecheck +
    esbuild, one self-contained `index.js`) → builds the Next standalone output →
